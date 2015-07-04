@@ -13,7 +13,7 @@ Python utility to clone a row in mysql, from a target to source database, field 
 ## Creating a tunnel to mysql
 Sometimes you may not have direct access to the mysql database (e.g. the port is not exposed). To get around this you can use an ssh tunnel, if you have ssh access to the box:
 
-    ``` shell
+    ```shell
         ssh -L 33306:localhost:3306 my.mysql.server
     ```
 
