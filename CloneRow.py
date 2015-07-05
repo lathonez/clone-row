@@ -31,7 +31,7 @@ class DictDiffer(object):
 import MySQLdb as mdb
 import ConfigParser
 import time
-import os
+import datetime
 
 class CloneRow(object):
     """ TODO : DOC """
@@ -49,19 +49,23 @@ class CloneRow(object):
 
         self.config = ConfigParser.ConfigParser(allow_no_value=True)
         self.config.readfp(open('CloneRow.cfg'))
-        self.databse = self.config.get('command_line_args', 'database')
+        self.database = self.config.get('command_line_args', 'database')
         self.table = self.config.get('command_line_args', 'table')
         self.column = self.config.get('command_line_args', 'column')
         self.column_filter = self.config.get('command_line_args', 'column_filter')
 
-    @classmethod
-    def connect(cls, user, host, port, password=None):
+    def error(self, message):
+        """ wrapper for raising errors that does housekeeping too """
+        self.housekeep()
+        raise Exception('FATAL: ' + message)
+
+    def connect(self, user, host, port, password=None):
         """ TODO - doc """
         if password is not None:
             con = mdb.connect(
                 host=host,
                 user=user,
-                db=cls.database,
+                db=self.database,
                 port=port,
                 passwd=password
             )
@@ -69,13 +73,13 @@ class CloneRow(object):
             con = mdb.connect(
                 host=host,
                 user=user,
-                db=cls.database,
+                db=self.database,
                 port=port
             )
 
         version = con.get_server_info()
         print 'Connected to {0}@${1}:{2} - Database version : {3} '.format(
-            user, host, cls.database, version
+            user, host, self.database, version
         )
 
         return con
@@ -90,8 +94,7 @@ class CloneRow(object):
         res = con.store_result()
         # we should only _ever_ be playing with one row, per host, at a time
         if res.num_rows() != 1:
-            con.close()
-            raise 'Only one row expected -- cannot clone on multiple rows!'
+            self.error('get_row: Only one row expected -- cannot clone on multiple rows!')
 
         row = res.fetch_row(how=1)
         return dict(row[0])
@@ -109,8 +112,8 @@ class CloneRow(object):
         return {
             'new_columns_in_source': delta.added(),
             'new_columns_in_target': delta.removed(),
-            'delta_rows': delta.changed(),
-            'unchanged_rows': delta.unchanged()
+            'delta_columns': delta.changed(),
+            'unchanged_columns': delta.unchanged()
         }
 
     def get_column_sql(self, con, column):
@@ -119,8 +122,7 @@ class CloneRow(object):
         con.query('show fields from {0} where field = \'{1}\''.format(self.table, column))
         res = con.store_result()
         if res.num_rows() != 1:
-            con.close()
-            raise 'Only one row expected -- cannot display sql for multiple rows!'
+            self.error('get_column_sql: only one row expected!')
         column_info = dict(res.fetch_row(how=1)[0])
         not_null = '' if column_info['Null'] == 'yes' else ' not null'
         default = '' if column_info['Default'] is None else ' default ' + column_info['Default']
@@ -163,9 +165,31 @@ class CloneRow(object):
                 '-' * len('column: ' + column)
             )
 
-    def update_target(self, source_row, target_con, table, deltas):
+    def update_target(self, source_row, deltas):
         """ update the data in the target database with differences from source """
-    #    for column in target_con
+        if not len(deltas):
+            return
+        cur = self.target_con.cursor()
+        # generate update sql for everything in the deltas
+        for column in deltas:
+            # doing updates one by one is just easier and more readable
+            update_sql = "update {0} set {1} = %s where {2} = '{3}'".format(
+                self.table,
+                column,
+                self.column,
+                self.column_filter
+            )
+            # run the update
+            print 'updating {0}.{1}'.format(self.table, column)
+            cur.execute(update_sql, (source_row[column],))
+            if self.target_con.affected_rows() != 1:
+                self.target_con.rollback()
+                cur.close()
+                self.error('update_target: expected to update a single row')
+        # don't commit anything until all updates have gone in ok
+        cur.close()
+        self.target_con.commit()
+        return
 
     def unload_target(self):
         """ unload the row we're working on from the target_db in case we ruin it """
@@ -182,17 +206,52 @@ class CloneRow(object):
             self.column,
             self.column_filter
         ))
-        # check the file exists and isn't empty
-        try:
-            if os.stat(unload_file).st_size > 0:
-                # all good
-                pass
-            else:
-                # we've either blown up on the stat or have an empty file (here)
-                raise 'unload failed, {0} looks empty'.format(unload_file)
-        except OSError:
-            self.housekeep()
+        if self.target_con.affected_rows() != 1:
+            self.error('unload_target: unable to verify unload file')
         return unload_file
+
+    def restore_target(self, unload_file):
+        """ restore data unloaded from unload_target """
+        delete_sql = 'delete from {0} where {1} = \'{2}\''.format(
+            self.table,
+            self.column,
+            self.column_filter
+        )
+        self.target_con.query(delete_sql)
+        if self.target_con.affected_rows != 1:
+            self.target_con.rollback()
+            self.error('restore_target: expected to delete only one row')
+        restore_sql = 'load data infile \'{0}\' into table {1}'.format(
+            unload_file,
+            self.table
+        )
+        self.target_con.query(restore_sql)
+        if self.target_con.affected_rows != 1:
+            self.target_con.rollback()
+            self.error('restore_target: expected to load only one row')
+        self.target_con.commit()
+
+    @classmethod
+    def print_delta_columns(cls, deltas):
+        """ helper function to print out columns which will be updated """
+        print '\n\n|----------------------------------------------------------|'
+        print 'The following columns will be updated in the target db:'
+        for column in deltas:
+            print '\t- ' + column
+        print '|----------------------------------------------------------|'
+
+    @classmethod
+    def user_happy(cls):
+        """ Give the user a chance to restore from backup easily beforer we terminate """
+        print 'Row has been cloned successfully..'
+        print 'Type \'r\' to (r)estore from backup, anything else to termiate'
+        descision = raw_input()
+        if descision == 'r':
+            print 'restoring from backup..'
+            return False
+        else:
+            print 'have a fantastic day..'
+            return True
 
     def housekeep(self):
         """ close connections / whatever else """
@@ -220,15 +279,23 @@ class CloneRow(object):
             self.config.getint('target_db', 'port'),
             self.config.get('target_db', 'password')
         )
+        # we don't want mysql commit stuff unless we've okay'd it
+        self.target_con.autocommit(False)
         print 'getting source row..'
         source_row = self.get_row(self.source_con)
         print 'getting target row..'
         target_row = self.get_row(self.target_con)
         print 'finding deltas..'
         deltas = self.find_deltas(source_row, target_row)
-        self.show_ddl_updates('source', deltas["new_columns_in_source"])
+        self.show_ddl_updates('source', deltas['new_columns_in_source'])
         self.show_ddl_updates('target', deltas['new_columns_in_target'])
+        self.print_delta_columns(deltas['delta_columns'])
+        print 'backing up target row..'
         backup = self.unload_target()
+        print 'backup file can be found at {0} on the target host'.format(backup)
+        print self.update_target(source_row, deltas['delta_columns'])
+        if not self.user_happy():
+            self.restore_target(backup)
         self.housekeep()
 
 DOLLY = CloneRow()
