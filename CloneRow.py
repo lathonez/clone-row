@@ -1,6 +1,4 @@
 #! /usr/local/bin/python
-""" TODO - doc """
-
 """
     Credit for DictDiffer to hughdbrown:
     https://github.com/hughdbrown/dictdiffer
@@ -29,7 +27,6 @@ class DictDiffer(object):
     def unchanged(self):
         """ doc """
         return set(o for o in self.intersect if self.past_dict[o] == self.current_dict[o])
-
 
 import MySQLdb as mdb
 import ConfigParser
