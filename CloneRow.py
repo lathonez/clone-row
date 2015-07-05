@@ -31,7 +31,6 @@ class DictDiffer(object):
 import MySQLdb as mdb
 import ConfigParser
 import time
-import datetime
 
 class CloneRow(object):
     """ TODO : DOC """
