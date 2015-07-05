@@ -48,7 +48,7 @@ class CloneRow(object):
     def __init__(self):
 
         self.config = ConfigParser.ConfigParser(allow_no_value=True)
-        self.config.readfp(open('clone-row.cfg'))
+        self.config.readfp(open('CloneRow.cfg'))
         self.databse = self.config.get('command_line_args', 'database')
         self.table = self.config.get('command_line_args', 'table')
         self.column = self.config.get('command_line_args', 'column')
