@@ -29,29 +29,48 @@ class DictDiffer(object):
         return set(o for o in self.intersect if self.past_dict[o] == self.current_dict[o])
 
 import MySQLdb as mdb
-import ConfigParser, time, datetime
+import ConfigParser, time, datetime, argparse
 
 class CloneRow(object):
     """ TODO : DOC """
 
-    # instance variables
-    config = None
-    database = None
-    source_con = None
-    target_con = None
-    table = None
-    column = None
-    column_filter = None
-    target_insert = False
-
     def __init__(self):
-
         self.config = ConfigParser.ConfigParser(allow_no_value=True)
         self.config.readfp(open('CloneRow.cfg'))
-        self.database = self.config.get('command_line_args', 'database')
-        self.table = self.config.get('command_line_args', 'table')
-        self.column = self.config.get('command_line_args', 'column')
-        self.column_filter = self.config.get('command_line_args', 'column_filter')
+        self.source_host = None
+        self.target_host = None
+        self.source_con = None
+        self.target_con = None
+        self.database = {
+            'name': None,
+            'table': None,
+            'column': None,
+            'column_filter': None
+        }
+        self.target_insert = False
+
+    def parse_cla(self):
+        """ parse command line arguments """
+        parser = argparse.ArgumentParser()
+        parser.add_argument('source_host', help='source hostname: should be defined in config')
+        parser.add_argument('target_host', help='target hostname: should be defined in config')
+        parser.add_argument('database', help='database name: same on source and target host')
+        parser.add_argument('table', help='table to consider: select from <table>')
+        parser.add_argument(
+            'column',
+            help='column to consider: select from table where <column>'
+        )
+        parser.add_argument(
+            'column_filter',
+            help='value to filter column: select from table where column = <column_filter>'
+        )
+        args = parser.parse_args()
+        self.source_host = args.source_host
+        self.target_host = args.target_host
+        self.database['name'] = args.database
+        self.database['table'] = args.table
+        self.database['column'] = args.column
+        self.database['column_filter'] = args.column_filter
 
     def error(self, message):
         """ wrapper for raising errors that does housekeeping too """
@@ -64,7 +83,7 @@ class CloneRow(object):
             con = mdb.connect(
                 host=host,
                 user=user,
-                db=self.database,
+                db=self.database['name'],
                 port=port,
                 passwd=password
             )
@@ -72,7 +91,7 @@ class CloneRow(object):
             con = mdb.connect(
                 host=host,
                 user=user,
-                db=self.database,
+                db=self.database['name'],
                 port=port
             )
 
@@ -87,9 +106,9 @@ class CloneRow(object):
         """ TODO - doc """
         # we're not using cursors here because we want the nice object with column headers
         select_sql = 'select * from {0} where {1} = {2}'.format(
-            self.table,
-            self.column,
-            self.quote_sql_param(con.escape_string(self.column_filter))
+            self.database['table'],
+            self.database['column'],
+            self.quote_sql_param(con.escape_string(self.database['column_filter']))
         )
         con.query(select_sql)
         res = con.store_result()
@@ -134,8 +153,11 @@ class CloneRow(object):
 
     def get_column_sql(self, con, column):
         """ return sql to add or drop a given column from the table we're working on """
-        drop_sql = 'alter table `{0}` drop column `{1}`;'.format(self.table, column)
-        con.query('show fields from {0} where field = \'{1}\''.format(self.table, column))
+        drop_sql = 'alter table `{0}` drop column `{1}`;'.format(self.database['table'], column)
+        con.query('show fields from {0} where field = \'{1}\''.format(
+            self.database['table'],
+            column
+        ))
         res = con.store_result()
         if res.num_rows() != 1:
             self.error('get_column_sql: only one row expected!')
@@ -143,7 +165,7 @@ class CloneRow(object):
         not_null = '' if column_info['Null'] == 'yes' else ' not null'
         default = '' if column_info['Default'] is None else ' default ' + column_info['Default']
         add_sql = 'alter table `{0}` add column `{1}` {2}{3}{4};'.format(
-            self.table,
+            self.database['table'],
             column,
             column_info['Type'],
             default,
@@ -190,13 +212,13 @@ class CloneRow(object):
         for column in deltas:
             # doing updates one by one is just easier and more readable
             update_sql = "update {0} set {1} = %s where {2} = %s".format(
-                self.table,
+                self.database['table'],
                 column,
-                self.column
+                self.database['column']
             )
             # run the update
-            print 'updating {0}.{1}'.format(self.table, column)
-            cur.execute(update_sql, (source_row[column], self.column_filter,))
+            print 'updating {0}.{1}'.format(self.database['table'], column)
+            cur.execute(update_sql, (source_row[column], self.database['column_filter'],))
             if self.target_con.affected_rows() != 1:
                 self.target_con.rollback()
                 cur.close()
@@ -211,16 +233,16 @@ class CloneRow(object):
         cur = self.target_con.cursor()
         unload_file = self.config.get('backup', 'unload_dir')
         unload_file += '/{0}-{1}-{2}-{3}'.format(
-            self.table,
-            self.column,
-            self.column_filter,
+            self.database['table'],
+            self.database['column'],
+            self.database['column_filter'],
             int(round(time.time() * 1000))
         )
         cur.execute('select * into outfile \'{0}\' from {1} where {2} = %s'.format(
             unload_file,
-            self.table,
-            self.column
-        ), (self.column_filter, ))
+            self.database['table'],
+            self.database['column']
+        ), (self.database['column_filter'], ))
         if self.target_con.affected_rows() != 1:
             self.error('unload_target: unable to verify unload file')
         return unload_file
@@ -229,10 +251,10 @@ class CloneRow(object):
         """ restore data unloaded from unload_target """
         cur = self.target_con.cursor()
         delete_sql = 'delete from {0} where {1} = %s'.format(
-            self.table,
-            self.column
+            self.database['table'],
+            self.database['column']
         )
-        cur.execute(delete_sql, (self.column_filter, ))
+        cur.execute(delete_sql, (self.database['column_filter'], ))
         if self.target_con.affected_rows() != 1:
             cur.close()
             self.target_con.rollback()
@@ -244,7 +266,7 @@ class CloneRow(object):
             return
         restore_sql = 'load data infile \'{0}\' into table {1}'.format(
             unload_file,
-            self.table
+            self.database['table']
         )
         cur.execute(restore_sql)
         if self.target_con.affected_rows() != 1:
@@ -285,10 +307,10 @@ class CloneRow(object):
         """
         cur = self.target_con.cursor()
         insert_sql = 'insert into {0} ({1}) values (%s)'.format(
-            self.table,
-            self.column
+            self.database['table'],
+            self.database['column']
         )
-        cur.execute(insert_sql, (self.column_filter,))
+        cur.execute(insert_sql, (self.database['column_filter'],))
         if self.target_con.affected_rows() != 1:
             cur.close()
             self.error('somehow we\'ve inserted multiple rows')
@@ -305,19 +327,20 @@ class CloneRow(object):
         """ TODO - doc """
         if not self.check_config_chmod:
             raise 'clone-row.cfg needs to be secure\n\nchmod 0600 clone-row.cfg\n\n'
+        self.parse_cla()
         print 'connecting to source database..'
         self.source_con = self.connect(
-            self.config.get('source_db', 'username'),
-            self.config.get('source_db', 'host'),
-            self.config.getint('source_db', 'port'),
-            self.config.get('source_db', 'password')
+            self.config.get(self.source_host, 'username'),
+            self.config.get(self.source_host, 'host'),
+            self.config.getint(self.source_host, 'port'),
+            self.config.get(self.source_host, 'password')
         )
         print 'connecting to target database..'
         self.target_con = self.connect(
-            self.config.get('target_db', 'username'),
-            self.config.get('target_db', 'host'),
-            self.config.getint('target_db', 'port'),
-            self.config.get('target_db', 'password')
+            self.config.get(self.target_host, 'username'),
+            self.config.get(self.target_host, 'host'),
+            self.config.getint(self.target_host, 'port'),
+            self.config.get(self.target_host, 'password')
         )
         # we don't want mysql commit stuff unless we've okay'd it
         self.target_con.autocommit(False)
