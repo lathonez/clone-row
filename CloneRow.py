@@ -29,8 +29,7 @@ class DictDiffer(object):
         return set(o for o in self.intersect if self.past_dict[o] == self.current_dict[o])
 
 import MySQLdb as mdb
-import ConfigParser
-import time
+import ConfigParser, time, datetime
 
 class CloneRow(object):
     """ TODO : DOC """
@@ -85,11 +84,13 @@ class CloneRow(object):
 
     def get_row(self, con):
         """ TODO - doc """
-        con.query('select * from {0} where {1} = \'{2}\''.format(
+        # we're not using cursors here because we want the nice object with column headers
+        select_sql = 'select * from {0} where {1} = {2}'.format(
             self.table,
             self.column,
-            self.column_filter
-        ))
+            self.quote_sql_param(con.escape_string(self.column_filter))
+        )
+        con.query(select_sql)
         res = con.store_result()
         # we should only _ever_ be playing with one row, per host, at a time
         if res.num_rows() != 1:
@@ -114,6 +115,19 @@ class CloneRow(object):
             'delta_columns': delta.changed(),
             'unchanged_columns': delta.unchanged()
         }
+
+    @classmethod
+    def quote_sql_param(cls, sql_param):
+        """ 'quote' a param if necessary, else return it as is.
+            param should be escaped (Connection.escape_string) before it's passed in
+            we should use cursors and parameterisation where possible, but sometimes we
+            need to use the Connection.query method, so this is necessary
+        """
+        if isinstance(sql_param, str) or isinstance(sql_param, datetime.datetime):
+            return '\'{0}\''.format(sql_param)
+        else:
+            # doesn't need quoting
+            return sql_param
 
     def get_column_sql(self, con, column):
         """ return sql to add or drop a given column from the table we're working on """
@@ -172,15 +186,14 @@ class CloneRow(object):
         # generate update sql for everything in the deltas
         for column in deltas:
             # doing updates one by one is just easier and more readable
-            update_sql = "update {0} set {1} = %s where {2} = '{3}'".format(
+            update_sql = "update {0} set {1} = %s where {2} = %s".format(
                 self.table,
                 column,
-                self.column,
-                self.column_filter
+                self.column
             )
             # run the update
             print 'updating {0}.{1}'.format(self.table, column)
-            cur.execute(update_sql, (source_row[column],))
+            cur.execute(update_sql, (source_row[column], self.column_filter,))
             if self.target_con.affected_rows() != 1:
                 self.target_con.rollback()
                 cur.close()
@@ -192,6 +205,7 @@ class CloneRow(object):
 
     def unload_target(self):
         """ unload the row we're working on from the target_db in case we ruin it """
+        cur = self.target_con.cursor()
         unload_file = self.config.get('backup', 'unload_dir')
         unload_file += '/{0}-{1}-{2}-{3}'.format(
             self.table,
@@ -199,35 +213,37 @@ class CloneRow(object):
             self.column_filter,
             int(round(time.time() * 1000))
         )
-        self.target_con.query('select * into outfile \'{0}\' from {1} where {2} = \'{3}\''.format(
+        cur.execute('select * into outfile \'{0}\' from {1} where {2} = %s'.format(
             unload_file,
             self.table,
-            self.column,
-            self.column_filter
-        ))
+            self.column
+        ), (self.column_filter, ))
         if self.target_con.affected_rows() != 1:
             self.error('unload_target: unable to verify unload file')
         return unload_file
 
     def restore_target(self, unload_file):
         """ restore data unloaded from unload_target """
-        delete_sql = 'delete from {0} where {1} = \'{2}\''.format(
+        cur = self.target_con.cursor()
+        delete_sql = 'delete from {0} where {1} = %s'.format(
             self.table,
-            self.column,
-            self.column_filter
+            self.column
         )
-        self.target_con.query(delete_sql)
+        cur.execute(delete_sql, (self.column_filter, ))
         if self.target_con.affected_rows != 1:
+            cur.close()
             self.target_con.rollback()
             self.error('restore_target: expected to delete only one row')
         restore_sql = 'load data infile \'{0}\' into table {1}'.format(
             unload_file,
             self.table
         )
-        self.target_con.query(restore_sql)
+        cur.execute(restore_sql)
         if self.target_con.affected_rows != 1:
+            cur.close()
             self.target_con.rollback()
             self.error('restore_target: expected to load only one row')
+        cur.close()
         self.target_con.commit()
 
     @classmethod
@@ -288,6 +304,10 @@ class CloneRow(object):
         deltas = self.find_deltas(source_row, target_row)
         self.show_ddl_updates('source', deltas['new_columns_in_source'])
         self.show_ddl_updates('target', deltas['new_columns_in_target'])
+        if not len(deltas['delta_columns']):
+            print '\ndata is identical in target and source, nothing to do..'
+            self.housekeep()
+            return True
         self.print_delta_columns(deltas['delta_columns'])
         print 'backing up target row..'
         backup = self.unload_target()
