@@ -11,15 +11,6 @@ Python utility to clone a row in mysql, from a target to source database, field 
 * Use 127.0.0.1 instead of localhost. If you speciy localhost, mysql will use unix sockets and ignore the port argument
 * If you don't need to use a password to access your database, leave the value as empty, e.g. `password:`
 
-## Creating a tunnel to mysql
-Sometimes you may not have direct access to the mysql database (e.g. the port is not exposed). To get around this you can use an ssh tunnel, if you have ssh access to the box:
-
-```shell
-    ssh -L 33306:localhost:3306 my.mysql.server
-```
-
-You can now access the server on my.mysql.server on localhost port 33306.
-
 ## Usage
 
 ```shell
@@ -38,3 +29,12 @@ You can now access the server on my.mysql.server on localhost port 33306.
     optional arguments:
       -h, --help     show this help message and exit
 ```
+
+## Creating a tunnel to mysql
+Sometimes you may not have direct access to the mysql database (e.g. the port is not exposed). To get around this you can use an ssh tunnel, if you have ssh access to the box:
+
+```shell
+    ssh -L 33306:localhost:3306 my.mysql.server
+```
+
+You can now access the server on my.mysql.server on localhost port 33306.
