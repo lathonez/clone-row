@@ -22,19 +22,19 @@ You can now access the server on my.mysql.server on localhost port 33306.
 
 ## Usage
 
-    ```shell
-        usage: CloneRow.py [-h]
-                           source_host target_host database table column column_filter
+```shell
+    usage: CloneRow.py [-h]
+                       source_host target_host database table column column_filter
 
-        positional arguments:
-          source_host    source hostname: should be defined in config
-          target_host    target hostname: should be defined in config
-          database       database name: same on source and target host
-          table          table to consider: select from <table>
-          column         column to consider: select from table where <column>
-          column_filter  value to filter column: select from table where column =
-                         <column_filter>
+    positional arguments:
+      source_host    source hostname: should be defined in config
+      target_host    target hostname: should be defined in config
+      database       database name: same on source and target host
+      table          table to consider: select from <table>
+      column         column to consider: select from table where <column>
+      column_filter  value to filter column: select from table where column =
+                     <column_filter>
 
-        optional arguments:
-          -h, --help     show this help message and exit
-    ```
+    optional arguments:
+      -h, --help     show this help message and exit
+```
