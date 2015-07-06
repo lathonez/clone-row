@@ -42,6 +42,7 @@ class CloneRow(object):
     table = None
     column = None
     column_filter = None
+    target_insert = False
 
     def __init__(self):
 
@@ -93,6 +94,8 @@ class CloneRow(object):
         con.query(select_sql)
         res = con.store_result()
         # we should only _ever_ be playing with one row, per host, at a time
+        if res.num_rows() == 0:
+            return None
         if res.num_rows() != 1:
             self.error('get_row: Only one row expected -- cannot clone on multiple rows!')
 
@@ -230,16 +233,21 @@ class CloneRow(object):
             self.column
         )
         cur.execute(delete_sql, (self.column_filter, ))
-        if self.target_con.affected_rows != 1:
+        if self.target_con.affected_rows() != 1:
             cur.close()
             self.target_con.rollback()
             self.error('restore_target: expected to delete only one row')
+        if self.target_insert:
+            print 'not restoring from backup as target was inserted from scratch'
+            cur.close()
+            self.target_con.commit()
+            return
         restore_sql = 'load data infile \'{0}\' into table {1}'.format(
             unload_file,
             self.table
         )
         cur.execute(restore_sql)
-        if self.target_con.affected_rows != 1:
+        if self.target_con.affected_rows() != 1:
             cur.close()
             self.target_con.rollback()
             self.error('restore_target: expected to load only one row')
@@ -268,6 +276,25 @@ class CloneRow(object):
             print 'have a fantastic day..'
             return True
 
+    def minimal_insert(self):
+        """ insert as little data as possible into the target database
+            this will allow us to reselect and continue as normal if
+            the row doesn't exist at all
+            TODO - we could find all the columns that require default values
+                   and spam defaults of the appropriate datatype in there..
+        """
+        cur = self.target_con.cursor()
+        insert_sql = 'insert into {0} ({1}) values (%s)'.format(
+            self.table,
+            self.column
+        )
+        cur.execute(insert_sql, (self.column_filter,))
+        if self.target_con.affected_rows() != 1:
+            cur.close()
+            self.error('somehow we\'ve inserted multiple rows')
+        # now we have a row, we can return it as usual
+        return self.get_row(self.target_con)
+
     def housekeep(self):
         """ close connections / whatever else """
         print 'housekeeping..'
@@ -276,10 +303,8 @@ class CloneRow(object):
 
     def main(self):
         """ TODO - doc """
-
         if not self.check_config_chmod:
             raise 'clone-row.cfg needs to be secure\n\nchmod 0600 clone-row.cfg\n\n'
-
         print 'connecting to source database..'
         self.source_con = self.connect(
             self.config.get('source_db', 'username'),
@@ -298,8 +323,14 @@ class CloneRow(object):
         self.target_con.autocommit(False)
         print 'getting source row..'
         source_row = self.get_row(self.source_con)
+        if source_row is None:
+            self.error('row does not exist in source database')
         print 'getting target row..'
         target_row = self.get_row(self.target_con)
+        if target_row is None:
+            print 'row does not exist at all in target, running a minimal insert..'
+            self.target_insert = True
+            target_row = self.minimal_insert()
         print 'finding deltas..'
         deltas = self.find_deltas(source_row, target_row)
         self.show_ddl_updates('source', deltas['new_columns_in_source'])
