@@ -1,38 +1,12 @@
 #! /usr/local/bin/python
-"""
-    Credit for DictDiffer to hughdbrown:
-    https://github.com/hughdbrown/dictdiffer
-"""
-class DictDiffer(object):
-    """
-    Calculate the difference between two dictionaries as:
-    (1) items added
-    (2) items removed
-    (3) keys same in both but changed values
-    (4) keys same in both and unchanged values
-    """
-    def __init__(self, current_dict, past_dict):
-        self.current_dict, self.past_dict = current_dict, past_dict
-        self.set_current, self.set_past = set(current_dict.keys()), set(past_dict.keys())
-        self.intersect = self.set_current.intersection(self.set_past)
-    def added(self):
-        """ doc """
-        return self.set_current - self.intersect
-    def removed(self):
-        """ doc """
-        return self.set_past - self.intersect
-    def changed(self):
-        """ doc """
-        return set(o for o in self.intersect if self.past_dict[o] != self.current_dict[o])
-    def unchanged(self):
-        """ doc """
-        return set(o for o in self.intersect if self.past_dict[o] == self.current_dict[o])
+""" Python module for cloning a MYSQL row from one host to another """
 
 import MySQLdb as mdb
-import ConfigParser, time, datetime, argparse
+import ConfigParser, time, datetime, argparse, os, stat
+from DictDiffer import DictDiffer
 
 class CloneRow(object):
-    """ TODO : DOC """
+    """ CloneRow constructor, doesn't take any args """
 
     def __init__(self):
         self.config = ConfigParser.ConfigParser(allow_no_value=True)
@@ -98,7 +72,7 @@ class CloneRow(object):
         raise Exception('FATAL: ' + message)
 
     def connect(self, user, host, port, password=None):
-        """ TODO - doc """
+        """ connect to a mysql database, returning a MySQLdb.Connection object """
         if password is not None:
             con = mdb.connect(
                 host=host,
@@ -114,16 +88,17 @@ class CloneRow(object):
                 db=self.database['name'],
                 port=port
             )
-
         version = con.get_server_info()
         print 'Connected to {0}@${1}:{2} - Database version : {3} '.format(
             user, host, self.database['name'], version
         )
-
         return con
 
     def get_row(self, con):
-        """ TODO - doc """
+        """ Run a select query (MYSQLdb.Connection.query)
+            returning a dict including column headers.
+            Should always return a single row.
+        """
         # we're not using cursors here because we want the nice object with column headers
         select_sql = 'select * from {0} where {1} = {2}'.format(
             self.database['table'],
@@ -143,9 +118,12 @@ class CloneRow(object):
 
     @classmethod
     def check_config_chmod(cls):
-        """ make sure the read permissions of clone-row.cfg are set correctly """
-        # TODO
-        return True
+        """ make sure the read permissions of CloneRow.cfg are set correctly """
+        chmod = oct(stat.S_IMODE(os.stat('CloneRow.cfg').st_mode))
+        print chmod
+        if chmod != '0600':
+            print 'CloneRow.cfg needs to be secure\n\nchmod 0600 CloneRow.cfg\n\n'
+            raise Exception('FATAL: CloneRow.cfg is insecure')
 
     @classmethod
     def find_deltas(cls, source_row, target_row):
@@ -372,9 +350,8 @@ class CloneRow(object):
         self.target_con.close()
 
     def main(self):
-        """ TODO - doc """
-        if not self.check_config_chmod:
-            raise 'clone-row.cfg needs to be secure\n\nchmod 0600 clone-row.cfg\n\n'
+        """ main method """
+        self.check_config_chmod()
         self.parse_cla()
         print 'connecting to source database..'
         self.source_con = self.connect(

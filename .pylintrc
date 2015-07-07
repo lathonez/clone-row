@@ -1,2 +1,2 @@
 [BASIC]
-ignored-classes=Connection
+ignored-classes=Connection,DictDiffer
