@@ -103,7 +103,7 @@ class CloneRow(object):
                 port=port
             )
         version = con.get_server_info()
-        print 'Connected to {0}@${1}:{2} - Database version : {3} '.format(
+        print 'Connected to {0}@{1}:{2} - Database version : {3} '.format(
             user, host, self.database['name'], version
         )
         return con
