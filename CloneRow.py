@@ -7,14 +7,23 @@ from DictDiffer import DictDiffer
 
 class CloneRow(object):
     """ CloneRow constructor, doesn't take any args """
+    # TODO:
+    #   - add ddl only mode not requiring columns or filters
+    #   - re-arrange file, private methods when not in main, etc
+    #   - pretty logging
+    #   - better documentation with params etc
 
     def __init__(self):
         self.config = ConfigParser.ConfigParser(allow_no_value=True)
         self.config.readfp(open('CloneRow.cfg'))
-        self.source_host = None
-        self.target_host = None
-        self.source_con = None
-        self.target_con = None
+        self.host = {
+            'source': None,
+            'target': None
+        }
+        self.con = {
+            'source': None,
+            'target': None
+        }
         self.database = {
             'name': None,
             'table': None,
@@ -40,13 +49,14 @@ class CloneRow(object):
             help='value to filter column: select from table where column = <column_filter>'
         )
         args = parser.parse_args()
-        self.source_host = args.source_host
-        self.target_host = args.target_host
+        self.host['source'] = args.source_host
+        self.host['target'] = args.target_host
         self.database['name'] = args.database
         self.database['table'] = args.table
         self.database['column'] = args.column
         self.database['column_filter'] = args.column_filter
         self.get_table_config(self.database['table'])
+        self.config.set('backup', 'unload_filepath', self.get_unload_filepath())
 
     def get_table_config(self, table):
         """ get table specific config items, if any """
@@ -71,11 +81,15 @@ class CloneRow(object):
         self.housekeep()
         raise Exception('FATAL: ' + message)
 
-    def connect(self, user, host, port, password=None):
+    def connect(self, host):
         """ connect to a mysql database, returning a MySQLdb.Connection object """
+        hostname = self.config.get(host, 'hostname')
+        user = self.config.get(host, 'username')
+        port = self.config.getint(host, 'port')
+        password = self.config.get(host, 'password')
         if password is not None:
             con = mdb.connect(
-                host=host,
+                host=hostname,
                 user=user,
                 db=self.database['name'],
                 port=port,
@@ -83,7 +97,7 @@ class CloneRow(object):
             )
         else:
             con = mdb.connect(
-                host=host,
+                host=hostname,
                 user=user,
                 db=self.database['name'],
                 port=port
@@ -120,7 +134,6 @@ class CloneRow(object):
     def check_config_chmod(cls):
         """ make sure the read permissions of CloneRow.cfg are set correctly """
         chmod = oct(stat.S_IMODE(os.stat('CloneRow.cfg').st_mode))
-        print chmod
         if chmod != '0600':
             print 'CloneRow.cfg needs to be secure\n\nchmod 0600 CloneRow.cfg\n\n'
             raise Exception('FATAL: CloneRow.cfg is insecure')
@@ -148,6 +161,17 @@ class CloneRow(object):
         else:
             # doesn't need quoting
             return sql_param
+
+    def get_unload_filepath(self):
+        """ return the unload filepath for us to use for backups and sql dumps """
+        unload_file = self.config.get('backup', 'unload_dir')
+        unload_file += '/{0}-{1}-{2}-{3}'.format(
+            self.database['table'],
+            self.database['column'],
+            self.database['column_filter'],
+            int(round(time.time() * 1000))
+        )
+        return unload_file
 
     def get_column_sql(self, con, column):
         """ return sql to add or drop a given column from the table we're working on """
@@ -181,13 +205,13 @@ class CloneRow(object):
             table: table we're working on
             deltas: column differences
         """
-        working_db = self.source_host if mode == 'source' else self.target_host
-        other_db = self.target_host if mode == 'source' else self.source_host
-        con = self.source_con if working_db == self.source_host else self.target_con
+        working_db = self.host['source'] if mode == 'source' else self.host['target']
+        other_db = self.host['target'] if mode == 'source' else self.host['source']
+        con = self.con['source'] if working_db == self.host['source'] else self.host['target']
 
         for column in deltas:
             print '\n|----------------------|column: {0}|----------------------|\n'.format(column)
-            print '\'{0}\' exists in the {1} database but not in the source {2}\n'.format(
+            print '\'{0}\' exists in the {1} database but not in {2}\n'.format(
                 column, working_db, other_db
             )
             info = self.get_column_sql(con, column)
@@ -201,90 +225,93 @@ class CloneRow(object):
                 '-' * len('column: ' + column)
             )
 
+    def dump_update_sql(self, cursor):
+        """ dump the last executed update statement to a file """
+        # naughty naughty, accessing a protected member.. show me a better way
+        sql = cursor._last_executed
+        sql_file = self.config.get('backup', 'unload_filepath') + '.sql'
+        with open(sql_file, "w") as outfile:
+            outfile.write(sql)
+        print 'update sql is available for inspection at {0} on this machine'.format(sql_file)
+
     def update_target(self, source_row, deltas):
         """ update the data in the target database with differences from source """
-        # TODO:
-        #   - dump raw update sql
-        #   - do it in one statement
         if not len(deltas):
             return
-        cur = self.target_con.cursor()
+        cur = self.con['target'].cursor()
+        update_sql = None
+        update_params = []
         # generate update sql for everything in the deltas
         for column in deltas:
             if column in self.database['ignore_columns']:
                 continue
-            # doing updates one by one is just easier and more readable
-            update_sql = "update {0} set {1} = %s where {2} = %s".format(
-                self.database['table'],
-                column,
-                self.database['column']
-            )
-            # run the update
-            print 'updating {0}.{1}'.format(self.database['table'], column)
-            cur.execute(update_sql, (source_row[column], self.database['column_filter'],))
-            if self.target_con.affected_rows() != 1:
-                self.target_con.rollback()
-                cur.close()
-                self.error('update_target: expected to update a single row')
+            if not update_sql:
+                update_sql = 'update {0} set {1} = %s'.format(self.database['table'], column)
+            else:
+                update_sql += ', {0} = %s'.format(column)
+            update_params.append(source_row[column])
+        update_sql += ' where {0} = %s'.format(self.database['column'])
+        update_params.append(self.database['column_filter'])
+        # run the update
+        cur.execute(update_sql, tuple(update_params))
+        self.dump_update_sql(cur)
+        if self.con['target'].affected_rows() != 1:
+            self.con['target'].rollback()
+            cur.close()
+            self.error('update_target: expected to update a single row')
         # don't commit anything until all updates have gone in ok
         cur.close()
-        self.target_con.commit()
+        self.con['target'].commit()
         return
 
     def unload_target(self):
         """ unload the row we're working on from the target_db in case we ruin it """
         print 'backing up target row..'
-        cur = self.target_con.cursor()
-        unload_file = self.config.get('backup', 'unload_dir')
-        unload_file += '/{0}-{1}-{2}-{3}'.format(
-            self.database['table'],
-            self.database['column'],
-            self.database['column_filter'],
-            int(round(time.time() * 1000))
-        )
+        cur = self.con['target'].cursor()
+        unload_file = self.config.get('backup', 'unload_filepath') + '.backup'
         cur.execute('select * into outfile \'{0}\' from {1} where {2} = %s'.format(
             unload_file,
             self.database['table'],
             self.database['column']
         ), (self.database['column_filter'], ))
-        if self.target_con.affected_rows() != 1:
+        if self.con['target'].affected_rows() != 1:
             self.error('unload_target: unable to verify unload file')
-        print 'backup file can be found at {0} on {1}'.format(unload_file, self.target_host)
+        print 'backup file can be found at {0} on {1}'.format(unload_file, self.host['target'])
         return unload_file
 
     def restore_target(self, unload_file):
         """ restore data unloaded from unload_target """
-        cur = self.target_con.cursor()
+        cur = self.con['target'].cursor()
         delete_sql = 'delete from {0} where {1} = %s'.format(
             self.database['table'],
             self.database['column']
         )
         cur.execute(delete_sql, (self.database['column_filter'], ))
-        if self.target_con.affected_rows() != 1:
+        if self.con['target'].affected_rows() != 1:
             cur.close()
-            self.target_con.rollback()
+            self.con['target'].rollback()
             self.error('restore_target: expected to delete only one row')
         if self.target_insert:
-            print 'not restoring from backup as target was inserted from scratch'
+            print 'just deleting as target row was inserted from scratch'
             cur.close()
-            self.target_con.commit()
+            self.con['target'].commit()
             return
         restore_sql = 'load data infile \'{0}\' into table {1}'.format(
             unload_file,
             self.database['table']
         )
         cur.execute(restore_sql)
-        if self.target_con.affected_rows() != 1:
+        if self.con['target'].affected_rows() != 1:
             cur.close()
-            self.target_con.rollback()
+            self.con['target'].rollback()
             self.error('restore_target: expected to load only one row')
         cur.close()
-        self.target_con.commit()
+        self.con['target'].commit()
 
     def print_delta_columns(self, deltas):
         """ helper function to print out columns which will be updated """
         print '\n\n|----------------------------------------------------------|'
-        print 'The following columns will be updated on ' + self.target_host
+        print 'The following columns will be updated on ' + self.host['target']
         for column in deltas:
             if column in self.database['ignore_columns']:
                 continue
@@ -310,17 +337,17 @@ class CloneRow(object):
         """
         # TODO - we could find all the columns that require default values
         #        and spam defaults of the appropriate datatype in there..
-        cur = self.target_con.cursor()
+        cur = self.con['target'].cursor()
         insert_sql = 'insert into {0} ({1}) values (%s)'.format(
             self.database['table'],
             self.database['column']
         )
         cur.execute(insert_sql, (self.database['column_filter'],))
-        if self.target_con.affected_rows() != 1:
+        if self.con['target'].affected_rows() != 1:
             cur.close()
             self.error('somehow we\'ve inserted multiple rows')
         # now we have a row, we can return it as usual
-        return self.get_row(self.target_con)
+        return self.get_row(self.con['target'])
 
     def print_restore_sql(self, backup):
         """ tell the user how to rollback by hand after script has run """
@@ -338,7 +365,7 @@ class CloneRow(object):
         restore_manual_sql += '  commit;\n'
         print '\n|------------------------------------------------------------|\n'
         print ' To rollback manually, run the following sql on {0}\n'.format(
-            self.target_host)
+            self.host['target'])
         print restore_manual_sql
         print '|------------------------------------------------------------|'
         return
@@ -346,35 +373,23 @@ class CloneRow(object):
     def housekeep(self):
         """ close connections / whatever else """
         print 'housekeeping..'
-        self.source_con.close()
-        self.target_con.close()
+        self.con['source'].close()
+        self.con['target'].close()
 
     def main(self):
         """ main method """
         self.check_config_chmod()
         self.parse_cla()
-        print 'connecting to source database..'
-        self.source_con = self.connect(
-            self.config.get(self.source_host, 'username'),
-            self.config.get(self.source_host, 'host'),
-            self.config.getint(self.source_host, 'port'),
-            self.config.get(self.source_host, 'password')
-        )
-        print 'connecting to target database..'
-        self.target_con = self.connect(
-            self.config.get(self.target_host, 'username'),
-            self.config.get(self.target_host, 'host'),
-            self.config.getint(self.target_host, 'port'),
-            self.config.get(self.target_host, 'password')
-        )
+        self.con['source'] = self.connect(self.host['source'])
+        self.con['target'] = self.connect(self.host['target'])
         # we don't want mysql commit stuff unless we've okay'd it
-        self.target_con.autocommit(False)
+        self.con['target'].autocommit(False)
         print 'getting source row..'
-        source_row = self.get_row(self.source_con)
+        source_row = self.get_row(self.con['source'])
         if source_row is None:
             self.error('row does not exist in source database')
         print 'getting target row..'
-        target_row = self.get_row(self.target_con)
+        target_row = self.get_row(self.con['target'])
         if target_row is None:
             print 'row does not exist at all in target, running a minimal insert..'
             self.target_insert = True
@@ -389,7 +404,7 @@ class CloneRow(object):
             return True
 
         if set(deltas['delta_columns']).issubset(set(self.database['ignore_columns'])):
-            print '\nall deltas ignored - [table.{0}]:ignore_columns'.format(
+            print '\nall deltas ignored - [table.{0}]:ignore_columns, nothing to do..'.format(
                 self.database['table']
             )
             self.housekeep()
