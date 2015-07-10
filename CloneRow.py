@@ -184,7 +184,7 @@ class CloneRow(object):
         if res.num_rows() != 1:
             self.error('get_column_sql: only one row expected!')
         column_info = dict(res.fetch_row(how=1)[0])
-        not_null = '' if column_info['Null'] == 'yes' else ' not null'
+        not_null = '' if column_info['Null'] == 'YES' else ' not null'
         default = '' if column_info['Default'] is None else ' default ' + column_info['Default']
         add_sql = 'alter table `{0}` add column `{1}` {2}{3}{4};'.format(
             self.database['table'],
@@ -207,7 +207,7 @@ class CloneRow(object):
         """
         working_db = self.host['source'] if mode == 'source' else self.host['target']
         other_db = self.host['target'] if mode == 'source' else self.host['source']
-        con = self.con['source'] if working_db == self.host['source'] else self.host['target']
+        con = self.con['source'] if working_db == self.host['source'] else self.con['target']
 
         for column in deltas:
             print '\n|----------------------|column: {0}|----------------------|\n'.format(column)
