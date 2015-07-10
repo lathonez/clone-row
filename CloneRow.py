@@ -35,8 +35,17 @@ class CloneRow(object):
     def parse_cla(self):
         """ parse command line arguments """
         parser = argparse.ArgumentParser()
-        parser.add_argument('source_host', help='source hostname: should be defined in config')
-        parser.add_argument('target_host', help='target hostname: should be defined in config')
+        aliases = [section for section in self.config.sections() if 'host.' in section]
+        parser.add_argument(
+            'source_alias',
+            help='source hostname: should be defined in config',
+            choices=[alias[5:] for alias in aliases]
+        )
+        parser.add_argument(
+            'target_alias',
+            help='target hostname: should be defined in config',
+            choices=[alias[5:] for alias in aliases]
+        )
         parser.add_argument('table', help='table to consider: select from <table>')
         parser.add_argument(
             'column',
@@ -47,8 +56,10 @@ class CloneRow(object):
             help='value to filter column: select from table where column = <column_filter>'
         )
         args = parser.parse_args()
-        self.source['alias'] = args.source_host
-        self.target['alias'] = args.target_host
+        self.source['alias'] = 'host.' + args.source_alias
+        self.target['alias'] = 'host.' + args.target_alias
+        if self.source['alias'] == self.target['alias']:
+            self.error('source and target alias are identical')
         self.database['table'] = args.table
         self.database['column'] = args.column
         self.database['column_filter'] = args.column_filter
@@ -102,7 +113,7 @@ class CloneRow(object):
             )
         version = con.get_server_info()
         print 'Connected to {0}@{1}:{2} - Database version : {3} '.format(
-            user, host_alias, database, version
+            user, host_alias[5:], database, version
         )
         return con
 
