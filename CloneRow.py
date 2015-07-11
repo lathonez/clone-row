@@ -2,13 +2,12 @@
 """ Python module for cloning a MYSQL row from one host to another """
 
 import MySQLdb as mdb
-import ConfigParser, time, datetime, argparse, os, stat
+import ConfigParser, time, datetime, argparse, os, stat, sys
 from DictDiffer import DictDiffer
 
 class CloneRow(object):
     """ CloneRow constructor, doesn't take any args """
     # TODO:
-    #   - add ddl only mode not requiring columns or filters
     #   - re-arrange file, private methods when not in main, etc
     #   - pretty logging
     #   - better documentation with params etc
@@ -27,44 +26,58 @@ class CloneRow(object):
         self.database = {
             'table': None,
             'column': None,
-            'column_filter': None,
+            'filter': None,
             'ignore_columns': []
         }
         self.target_insert = False
 
     def parse_cla(self):
         """ parse command line arguments """
-        parser = argparse.ArgumentParser()
+        parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
         aliases = [section for section in self.config.sections() if 'host.' in section]
         parser.add_argument(
+            '--schema_only', '-s',
+            help='diff schema only, do not consider data (column and filter not required)',
+            action='store_true',
+            default=False
+        )
+        parser.add_argument(
             'source_alias',
-            help='source hostname: should be defined in config',
+            help='source host alias (for host.* config section)',
             choices=[alias[5:] for alias in aliases]
         )
         parser.add_argument(
             'target_alias',
-            help='target hostname: should be defined in config',
+            help='target host alias (for host.* section)',
             choices=[alias[5:] for alias in aliases]
         )
         parser.add_argument('table', help='table to consider: select from <table>')
         parser.add_argument(
             'column',
+            nargs='?',
             help='column to consider: select from table where <column>'
         )
         parser.add_argument(
-            'column_filter',
-            help='value to filter column: select from table where column = <column_filter>'
+            'filter',
+            nargs='?',
+            help='value to filter column: select from table where column = <filter>'
         )
         args = parser.parse_args()
+        if not args.schema_only and (args.column is None or args.filter is None):
+            print '\n', \
+                'column & filter arguments must be supplied unless running with --schema_only/-s\n'
+            parser.print_help()
+            sys.exit(0)
         self.source['alias'] = 'host.' + args.source_alias
         self.target['alias'] = 'host.' + args.target_alias
         if self.source['alias'] == self.target['alias']:
             self.error('source and target alias are identical')
         self.database['table'] = args.table
         self.database['column'] = args.column
-        self.database['column_filter'] = args.column_filter
+        self.database['filter'] = args.filter
         self.get_table_config(self.database['table'])
-        self.config.set('backup', 'unload_filepath', self.get_unload_filepath())
+        self.config.set('clone_row', 'unload_filepath', self.get_unload_filepath())
+        self.config.set('clone_row', 'schema_only', str(args.schema_only))
 
     def get_table_config(self, table):
         """ get table specific config items, if any """
@@ -122,12 +135,16 @@ class CloneRow(object):
             returning a dict including column headers.
             Should always return a single row.
         """
-        # we're not using cursors here because we want the nice object with column headers
-        select_sql = 'select * from {0} where {1} = {2}'.format(
-            self.database['table'],
-            self.database['column'],
-            self.quote_sql_param(con.escape_string(self.database['column_filter']))
-        )
+        if self.config.getboolean('clone_row', 'schema_only'):
+            # if we're only doing schema diffs we don't care about columns or filters
+            select_sql = 'select * from {0} limit 1'.format(self.database['table'])
+        else:
+            # we're not using cursors here because we want the nice object with column headers
+            select_sql = 'select * from {0} where {1} = {2}'.format(
+                self.database['table'],
+                self.database['column'],
+                self.quote_sql_param(con.escape_string(self.database['filter']))
+            )
         con.query(select_sql)
         res = con.store_result()
         # we should only _ever_ be playing with one row, per host, at a time
@@ -135,7 +152,6 @@ class CloneRow(object):
             return None
         if res.num_rows() != 1:
             self.error('get_row: Only one row expected -- cannot clone on multiple rows!')
-
         row = res.fetch_row(how=1)
         return dict(row[0])
 
@@ -173,11 +189,11 @@ class CloneRow(object):
 
     def get_unload_filepath(self):
         """ return the unload filepath for us to use for backups and sql dumps """
-        unload_file = self.config.get('backup', 'unload_dir')
+        unload_file = self.config.get('clone_row', 'unload_dir')
         unload_file += '/{0}-{1}-{2}-{3}'.format(
             self.database['table'],
             self.database['column'],
-            self.database['column_filter'],
+            self.database['filter'],
             int(round(time.time() * 1000))
         )
         return unload_file
@@ -239,7 +255,7 @@ class CloneRow(object):
         """ dump the last executed update statement to a file """
         # naughty naughty, accessing a protected member.. show me a better way
         sql = cursor._last_executed
-        sql_file = self.config.get('backup', 'unload_filepath') + '.sql'
+        sql_file = self.config.get('clone_row', 'unload_filepath') + '.sql'
         with open(sql_file, "w") as outfile:
             outfile.write(sql)
         print 'update sql is available for inspection at {0} on this machine'.format(sql_file)
@@ -261,7 +277,7 @@ class CloneRow(object):
                 update_sql += ', {0} = %s'.format(column)
             update_params.append(source_row[column])
         update_sql += ' where {0} = %s'.format(self.database['column'])
-        update_params.append(self.database['column_filter'])
+        update_params.append(self.database['filter'])
         # run the update
         cur.execute(update_sql, tuple(update_params))
         self.dump_update_sql(cur)
@@ -278,12 +294,12 @@ class CloneRow(object):
         """ unload the row we're working on from the target_db in case we ruin it """
         print 'backing up target row..'
         cur = self.target['connection'].cursor()
-        unload_file = self.config.get('backup', 'unload_filepath') + '.backup'
+        unload_file = self.config.get('clone_row', 'unload_filepath') + '.backup'
         cur.execute('select * into outfile \'{0}\' from {1} where {2} = %s'.format(
             unload_file,
             self.database['table'],
             self.database['column']
-        ), (self.database['column_filter'], ))
+        ), (self.database['filter'], ))
         if self.target['connection'].affected_rows() != 1:
             self.error('unload_target: unable to verify unload file')
         print 'backup file can be found at {0} on {1}'.format(unload_file, self.target['alias'])
@@ -296,7 +312,7 @@ class CloneRow(object):
             self.database['table'],
             self.database['column']
         )
-        cur.execute(delete_sql, (self.database['column_filter'], ))
+        cur.execute(delete_sql, (self.database['filter'], ))
         if self.target['connection'].affected_rows() != 1:
             cur.close()
             self.target['connection'].rollback()
@@ -352,7 +368,7 @@ class CloneRow(object):
             self.database['table'],
             self.database['column']
         )
-        cur.execute(insert_sql, (self.database['column_filter'],))
+        cur.execute(insert_sql, (self.database['filter'],))
         if self.target['connection'].affected_rows() != 1:
             cur.close()
             self.error('somehow we\'ve inserted multiple rows')
@@ -365,7 +381,7 @@ class CloneRow(object):
         restore_manual_sql += '  delete from {0} where {1} = {2};\n'.format(
             self.database['table'],
             self.database['column'],
-            self.quote_sql_param(self.database['column_filter'])
+            self.quote_sql_param(self.database['filter'])
         )
         restore_manual_sql += '  -- the above should have delete one row, '
         restore_manual_sql += 'if not, run: rollback;\n'
@@ -383,8 +399,10 @@ class CloneRow(object):
     def housekeep(self):
         """ close connections / whatever else """
         print 'housekeeping..'
-        self.source['connection'].close()
-        self.target['connection'].close()
+        if self.source['connection'] is not None:
+            self.source['connection'].close()
+        if self.target['connection'] is not None:
+            self.target['connection'].close()
 
     def main(self):
         """ main method """
@@ -408,11 +426,15 @@ class CloneRow(object):
         deltas = self.find_deltas(source_row, target_row)
         self.show_ddl_updates('source', deltas['new_columns_in_source'])
         self.show_ddl_updates('target', deltas['new_columns_in_target'])
+        if self.config.getboolean('clone_row', 'schema_only'):
+            # we're done if only diffing schema
+            print 'operation completed successfully, have a fantastic day'
+            self.housekeep()
+            sys.exit(0)
         if not len(deltas['delta_columns']):
             print '\ndata is identical in target and source, nothing to do..'
             self.housekeep()
             return True
-
         if set(deltas['delta_columns']).issubset(set(self.database['ignore_columns'])):
             print '\nall deltas ignored - [table.{0}]:ignore_columns, nothing to do..'.format(
                 self.database['table']
