@@ -11,6 +11,9 @@ class CloneRow(object):
     #   - re-arrange file, private methods when not in main, etc
     #   - pretty logging
     #   - better documentation with params etc
+    #   - read everything and comment out where necessary
+    #   - redo example config
+    #   - README.md
 
     def __init__(self):
         self.config = ConfigParser.ConfigParser(allow_no_value=True)
