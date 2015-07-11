@@ -17,17 +17,21 @@ class CloneRow(object):
         self.config.readfp(open('CloneRow.cfg'))
         self.source = {
             'alias': None,
-            'connection': None
+            'connection': None,
+            'row': None
         }
         self.target = {
             'alias': None,
-            'connection': None
+            'connection': None,
+            'row': None,
+            'backup': None
         }
         self.database = {
             'table': None,
             'column': None,
             'filter': None,
-            'ignore_columns': []
+            'ignore_columns': [],
+            'deltas': None
         }
         self.target_insert = False
 
@@ -130,11 +134,13 @@ class CloneRow(object):
         )
         return con
 
-    def get_row(self, con):
+    def get_row(self, host):
         """ Run a select query (MYSQLdb.Connection.query)
             returning a dict including column headers.
             Should always return a single row.
         """
+        print 'getting {0} row..'.format(host['alias'])
+        con = host['connection']
         if self.config.getboolean('clone_row', 'schema_only'):
             # if we're only doing schema diffs we don't care about columns or filters
             select_sql = 'select * from {0} limit 1'.format(self.database['table'])
@@ -155,6 +161,14 @@ class CloneRow(object):
         row = res.fetch_row(how=1)
         return dict(row[0])
 
+    def get_rows(self):
+        """ get rows from soure and target """
+        self.source['row'] = self.get_row(self.source)
+        self.target['row'] = self.get_row(self.target)
+        # we really need a source row..
+        if self.source['row'] is None:
+            self.error('get_rows: no row found in {0} database'.format(self.source['alias']))
+
     @classmethod
     def check_config_chmod(cls):
         """ make sure the read permissions of CloneRow.cfg are set correctly """
@@ -163,11 +177,11 @@ class CloneRow(object):
             print 'CloneRow.cfg needs to be secure\n\nchmod 0600 CloneRow.cfg\n\n'
             raise Exception('FATAL: CloneRow.cfg is insecure')
 
-    @classmethod
-    def find_deltas(cls, source_row, target_row):
+    def find_deltas(self):
         """ use DictDiffer to find what's different between target and source """
-        delta = DictDiffer(source_row, target_row)
-        return {
+        print 'finding deltas..'
+        delta = DictDiffer(self.source['row'], self.target['row'])
+        self.database['deltas'] = {
             'new_columns_in_source': delta.added(),
             'new_columns_in_target': delta.removed(),
             'delta_columns': delta.changed(),
@@ -223,33 +237,44 @@ class CloneRow(object):
             'drop_sql': drop_sql
         }
 
-    def show_ddl_updates(self, mode, deltas):
-        """ display SQL statements to adjust database for column deltas
-            mode: (source|target)
-            con: database connection (for source or target)
-            table: table we're working on
-            deltas: column differences
-        """
-        working_db = self.source['alias'] if mode == 'source' else self.target['alias']
-        other_db = self.target['alias'] if mode == 'source' else self.source['alias']
-        con = self.source['connection'] \
-            if working_db == self.source['alias'] else self.target['connection']
+    def set_connections(self):
+        """ setup soure and target connection objects """
+        self.source['connection'] = self.connect(self.source['alias'])
+        self.target['connection'] = self.connect(self.target['alias'])
+        # we don't want mysql commit stuff unless we've okay'd it
+        self.target['connection'].autocommit(False)
 
-        for column in deltas:
-            print '\n|----------------------|column: {0}|----------------------|\n'.format(column)
-            print '\'{0}\' exists in the {1} database but not in {2}\n'.format(
-                column, working_db, other_db
-            )
-            info = self.get_column_sql(con, column)
-            print 'ADD: to add column \'{0}\' to {1}, run the following SQL on {2}:\n'.format(
-                column, other_db, other_db)
-            print info['add_sql'], '\n'
-            print 'DROP: to drop column \'{0}\' from {1}, run the following SQL on {2}:\n'.format(
-                column, working_db, working_db)
-            print info['drop_sql'], '\n'
-            print '|-----------------------{0}-----------------------|'.format(
-                '-' * len('column: ' + column)
-            )
+    def show_schema_updates(self):
+        """ display SQL statements to adjust database for column deltas """
+        for mode in ['source', 'target']:
+            deltas = self.database['deltas']['new_columns_in_' + mode]
+            working_db = self.source['alias'] if mode == 'source' else self.target['alias']
+            other_db = self.target['alias'] if mode == 'source' else self.source['alias']
+            con = self.source['connection'] \
+                if working_db == self.source['alias'] else self.target['connection']
+
+            for column in deltas:
+                print '\n|----------------------|column: {0}|----------------------|\n'.format(
+                    column
+                )
+                print '\'{0}\' exists in the {1} database but not in {2}\n'.format(
+                    column, working_db, other_db
+                )
+                info = self.get_column_sql(con, column)
+                print 'ADD COLUMN: \'{0}\' to {1}, run the following SQL on {2}:\n'.format(
+                    column, other_db, other_db)
+                print info['add_sql'], '\n'
+                print 'DROP COLUMN: \'{0}\' from {1}, run the following SQL on {2}:\n'.format(
+                    column, working_db, working_db
+                )
+                print info['drop_sql'], '\n'
+                print '|-----------------------{0}-----------------------|'.format(
+                    '-' * len('column: ' + column)
+                )
+        if self.config.getboolean('clone_row', 'schema_only'):
+            # we're done if only diffing schema
+            print 'operation completed successfully, have a fantastic day'
+            self.exit()
 
     def dump_update_sql(self, cursor):
         """ dump the last executed update statement to a file """
@@ -260,22 +285,32 @@ class CloneRow(object):
             outfile.write(sql)
         print 'update sql is available for inspection at {0} on this machine'.format(sql_file)
 
-    def update_target(self, source_row, deltas):
+    def update_target(self):
         """ update the data in the target database with differences from source """
-        if not len(deltas):
-            return
+        if not len(self.database['deltas']['delta_columns']):
+            print '\ndata is identical in target and source, nothing to do..'
+            self.exit()
+        if set(self.database['deltas']['delta_columns']). \
+            issubset(set(self.database['ignore_columns'])):
+            print '\nall deltas ignored - [table.{0}]:ignore_columns, nothing to do..'.format(
+                self.database['table']
+            )
+            self.exit()
+        self.print_delta_columns(self.database['deltas']['delta_columns'])
+        self.target['backup'] = self.unload_target()
         cur = self.target['connection'].cursor()
         update_sql = None
         update_params = []
         # generate update sql for everything in the deltas
-        for column in deltas:
+        for column in self.database['deltas']['delta_columns']:
+            # TODO - python this, probably a nice one liner
             if column in self.database['ignore_columns']:
                 continue
             if not update_sql:
                 update_sql = 'update {0} set {1} = %s'.format(self.database['table'], column)
             else:
                 update_sql += ', {0} = %s'.format(column)
-            update_params.append(source_row[column])
+            update_params.append(self.source['row'][column])
         update_sql += ' where {0} = %s'.format(self.database['column'])
         update_params.append(self.database['filter'])
         # run the update
@@ -305,7 +340,7 @@ class CloneRow(object):
         print 'backup file can be found at {0} on {1}'.format(unload_file, self.target['alias'])
         return unload_file
 
-    def restore_target(self, unload_file):
+    def restore_target(self):
         """ restore data unloaded from unload_target """
         cur = self.target['connection'].cursor()
         delete_sql = 'delete from {0} where {1} = %s'.format(
@@ -323,7 +358,7 @@ class CloneRow(object):
             self.target['connection'].commit()
             return
         restore_sql = 'load data infile \'{0}\' into table {1}'.format(
-            unload_file,
+            self.target['backup'],
             self.database['table']
         )
         cur.execute(restore_sql)
@@ -344,25 +379,25 @@ class CloneRow(object):
             print '\t- ' + column
         print '|----------------------------------------------------------|\n'
 
-    @classmethod
-    def user_happy(cls):
+    def user_happy(self):
         """ Give the user a chance to restore from backup easily beforer we terminate """
         print 'Row has been cloned successfully..'
         print 'Type \'r\' to (r)estore from backup, anything else to termiate'
         descision = raw_input()
         if descision == 'r':
             print 'restoring from backup..'
-            return False
-        else:
-            return True
+            self.restore_target()
 
-    def minimal_insert(self):
-        """ insert as little data as possible into the target database
-            this will allow us to reselect and continue as normal if
-            the row doesn't exist at all
+    def insert_target(self):
+        """ insert as little data as possible into the target database, if nothing exists
+            there already. This allows us to reselect and continue as normal
         """
         # TODO - we could find all the columns that require default values
         #        and spam defaults of the appropriate datatype in there..
+        if self.target['row'] is not None:
+            # we only need to do this if there's no target row
+            return
+        print 'inserting a minimal row into target database..'
         cur = self.target['connection'].cursor()
         insert_sql = 'insert into {0} ({1}) values (%s)'.format(
             self.database['table'],
@@ -373,9 +408,9 @@ class CloneRow(object):
             cur.close()
             self.error('somehow we\'ve inserted multiple rows')
         # now we have a row, we can return it as usual
-        return self.get_row(self.target['connection'])
+        self.target['row'] = self.get_row(self.target)
 
-    def print_restore_sql(self, backup):
+    def print_restore_sql(self):
         """ tell the user how to rollback by hand after script has run """
         restore_manual_sql = '  begin;\n'
         restore_manual_sql += '  delete from {0} where {1} = {2};\n'.format(
@@ -386,7 +421,7 @@ class CloneRow(object):
         restore_manual_sql += '  -- the above should have delete one row, '
         restore_manual_sql += 'if not, run: rollback;\n'
         restore_manual_sql += '  load data infile \'{0}\' into table {1};\n'.format(
-            backup, self.database['table']
+            self.target['backup'], self.database['table']
         )
         restore_manual_sql += '  commit;\n'
         print '\n|------------------------------------------------------------|\n'
@@ -404,52 +439,36 @@ class CloneRow(object):
         if self.target['connection'] is not None:
             self.target['connection'].close()
 
-    def main(self):
-        """ main method """
-        self.check_config_chmod()
-        self.parse_cla()
-        self.source['connection'] = self.connect(self.source['alias'])
-        self.target['connection'] = self.connect(self.target['alias'])
-        # we don't want mysql commit stuff unless we've okay'd it
-        self.target['connection'].autocommit(False)
-        print 'getting source row..'
-        source_row = self.get_row(self.source['connection'])
-        if source_row is None:
-            self.error('row does not exist in source database')
-        print 'getting target row..'
-        target_row = self.get_row(self.target['connection'])
-        if target_row is None:
-            print 'row does not exist at all in target, running a minimal insert..'
-            self.target_insert = True
-            target_row = self.minimal_insert()
-        print 'finding deltas..'
-        deltas = self.find_deltas(source_row, target_row)
-        self.show_ddl_updates('source', deltas['new_columns_in_source'])
-        self.show_ddl_updates('target', deltas['new_columns_in_target'])
-        if self.config.getboolean('clone_row', 'schema_only'):
-            # we're done if only diffing schema
-            print 'operation completed successfully, have a fantastic day'
-            self.housekeep()
-            sys.exit(0)
-        if not len(deltas['delta_columns']):
-            print '\ndata is identical in target and source, nothing to do..'
-            self.housekeep()
-            return True
-        if set(deltas['delta_columns']).issubset(set(self.database['ignore_columns'])):
-            print '\nall deltas ignored - [table.{0}]:ignore_columns, nothing to do..'.format(
-                self.database['table']
-            )
-            self.housekeep()
-            return True
-        self.print_delta_columns(deltas['delta_columns'])
-        backup = self.unload_target()
-        self.update_target(source_row, deltas['delta_columns'])
-        if not self.user_happy():
-            self.restore_target(backup)
-        else:
-            print 'operation completed successfully, have a fantastic day'
-            self.print_restore_sql(backup)
+    def exit(self):
+        """ wrapper for exiting the script successfully """
+        print 'operation completed successfully, have a fantastic day'
         self.housekeep()
+        sys.exit(0)
 
+"""
+    main execution path
+    https://en.wikipedia.org/wiki/Dolly_(sheep)
+"""
 DOLLY = CloneRow()
-DOLLY.main()
+# make sure the config file has correct permissions (0600)
+DOLLY.check_config_chmod()
+# parse command line arguments from the user
+DOLLY.parse_cla()
+# establish a connection to source and target databases
+DOLLY.set_connections()
+# grab a single row from both databases
+DOLLY.get_rows()
+# if no row exists in the target, insert it here
+DOLLY.insert_target()
+# find differences between source and target
+DOLLY.find_deltas()
+# display SQL updates to bring source and target tables in-line
+DOLLY.show_schema_updates()
+# update the target database (and back it up)
+DOLLY.update_target()
+# check whether or not the user is happy.. will backup if not
+DOLLY.user_happy()
+# print restore SQL so the user can restore from SQL manually later if necessary
+DOLLY.print_restore_sql()
+# all done, cleanup and exit
+DOLLY.exit()
