@@ -1,13 +1,13 @@
 #! /usr/local/bin/python
 """ Python module for cloning a MYSQL row from one host to another """
 
-import argparse, coloredlogs, ConfigParser, datetime, logging, MySQLdb, os, stat, sys, time, traceback
+import argparse, coloredlogs, ConfigParser, datetime
+import logging, MySQLdb, os, stat, sys, time, traceback
 from DictDiffer import DictDiffer
 
 class CloneRow(object):
-    """ CloneRow constructor, doesn't take any args """
+    """ CloneRow constructor """
     # TODO:
-    #   - better documentation with params etc
     #   - read everything and comment out where necessary
     #   - redo example config
     #   - README.md
@@ -48,10 +48,12 @@ class CloneRow(object):
 
     @classmethod
     def _quote_sql_param(cls, sql_param):
-        """ 'quote' a param if necessary, else return it as is.
-            param should be escaped (Connection.escape_string) before it's passed in
-            we should use cursors and parameterisation where possible, but sometimes we
-            need to use the Connection.query method, so this is necessary
+        """
+        encapsulate an sql paramter in quotes if necessary
+        param should be escaped (Connection.escape_string) before it's passed in
+
+        Keyword arguments:
+        sql_param -- the sql paramter to operate on
         """
         if isinstance(sql_param, str) or isinstance(sql_param, datetime.datetime):
             return '\'{0}\''.format(sql_param)
@@ -65,7 +67,7 @@ class CloneRow(object):
 
     @classmethod
     def check_config_chmod(cls):
-        """ make sure the read permissions of CloneRow.cfg are set correctly """
+        """ make sure the file permissions of CloneRow.cfg are 0600 """
         chmod = oct(stat.S_IMODE(os.stat('CloneRow.cfg').st_mode))
         if chmod != '0600':
             logging.error('CloneRow.cfg needs to be secure: `chmod 0600 CloneRow.cfg`')
@@ -76,7 +78,13 @@ class CloneRow(object):
     #
 
     def _connect(self, host_alias):
-        """ connect to a mysql database, returning a MySQLdb.Connection object """
+        """
+        connect to a mysql database, returning a MySQLdb.Connection object
+
+        Keyword arguments:
+        host_alias -- the configured alias of the host we're connecting to
+                      e.g. local (defined as host.local in config)
+        """
         logging.info('attempting to connect to %s..', host_alias)
         hostname = self.config.get('host.' + host_alias, 'hostname')
         user = self.config.get('host.' + host_alias, 'username')
@@ -119,7 +127,12 @@ class CloneRow(object):
         return con
 
     def _dump_update_sql(self, cursor):
-        """ dump the last executed update statement to a file """
+        """
+        dump the last executed update statement to a file
+
+        Keyword arguments:
+        cursor -- MySQLdb.cursor object of the connection we're dumping
+        """
         # naughty naughty, accessing a protected member.. show me a better way
         logging.info('dumping update sql to disk..')
         sql = cursor._last_executed
@@ -129,7 +142,13 @@ class CloneRow(object):
         logging.warning('update sql is available for inspection at %s on this machine', sql_file)
 
     def _error(self, message=None, exception=None):
-        """ wrapper for raising errors that does housekeeping too """
+        """
+        wrapper for raising errors that housekeeps, prints traceback and evntually exits (1)
+
+        Keyword arguments:
+        message -- a string message to log at error level
+        exception -- if an exception is caught it can be passed in here, traceback will be printed
+        """
         self._housekeep()
         if message is not None:
             logging.error(message)
@@ -139,7 +158,13 @@ class CloneRow(object):
         sys.exit(1)
 
     def _get_column_sql(self, con, column):
-        """ return sql to add or drop a given column from the table we're working on """
+        """
+        return sql to add or drop a given column from the table passed in on the command line
+
+        Keyword arguments:
+        con -- MySQLdb.connection object of the database we're using (source or target)
+        column -- the column to return sql for
+        """
         drop_sql = 'alter table `{0}` drop column `{1}`;'.format(self.database['table'], column)
         con.query('show fields from {0} where field = \'{1}\''.format(
             self.database['table'],
@@ -164,7 +189,14 @@ class CloneRow(object):
         }
 
     def _get_log_break(self, string=''):
-        """ return |-------{string}--------| always same length """
+        """
+        return a string in the form of {end}{sep}{string}{sep}{end}, seps are repeated so
+        that the returned string will always the length configured in log_break_length
+        e.g. |------------{string}------------|
+
+        Keyword arguments:
+        string -- the string to insert into the log break (if any)
+        """
         length = self.config.getint('clone_row', 'log_header_length')
         sep = '-'
         end = '|'
@@ -177,9 +209,12 @@ class CloneRow(object):
         return log_header
 
     def _get_row(self, host):
-        """ Run a select query (MYSQLdb.Connection.query)
-            returning a dict including column headers.
-            Should always return a single row.
+        """
+        Run a select query (MYSQLdb.Connection.query) returning a dict including column headers.
+        Should always return a single row.
+
+        Keyword arguments:
+        host -- host dict containing params of the host we're selecting from
         """
         logging.info('getting %s row..', host['alias'])
         con = host['connection']
@@ -211,7 +246,12 @@ class CloneRow(object):
         return dict(row[0])
 
     def _get_table_config(self, table):
-        """ get table specific config items, if any """
+        """
+        get table specific config items, if any, as defined in config (table.mytable)
+
+        Keyword arguments:
+        table -- the name of the table, e.g. 'mytable' in the example above
+        """
         table_section = 'table.' + table
         if not self.config.has_section(table_section):
             logging.warning('no table specific config defined for %s', table)
@@ -240,7 +280,7 @@ class CloneRow(object):
         return unload_file
 
     def _housekeep(self):
-        """ close connections / whatever else """
+        """ close connections any existing connections """
         logging.info('housekeeping..')
         if self.source['connection'] is not None:
             self.source['connection'].close()
@@ -248,19 +288,23 @@ class CloneRow(object):
             self.target['connection'].close()
 
     def _print_delta_columns(self, deltas):
-        """ helper function to print out columns which will be updated """
+        """
+        helper function to log columns which will be updated by this script (if any)
+
+        Keyword arguments:
+        deltas -- list of columns containing differences
+        """
         logging.info('')
         logging.info(self._get_log_break('|Data Changes|'))
         logging.info('  The following columns will be updated on ' + self.target['alias'])
+        deltas = [d for d in deltas if d not in self.database['ignore_columns']]
         for column in deltas:
-            if column in self.database['ignore_columns']:
-                continue
             logging.info('    -%s ', column)
         logging.info(self._get_log_break())
         logging.info('')
 
     def _restore_target(self):
-        """ restore data unloaded from unload_target """
+        """ restore data unloaded from the target database """
         cur = self.target['connection'].cursor()
         delete_sql = 'delete from {0} where {1} = %s'.format(
             self.database['table'],
@@ -289,7 +333,7 @@ class CloneRow(object):
         self.target['connection'].commit()
 
     def _unload_target(self):
-        """ unload the row we're working on from the target_db in case we ruin it """
+        """ unload the row we're working on from the target database for backup purposes """
         logging.info('backing up target row..')
         cur = self.target['connection'].cursor()
         unload_file = self.config.get('clone_row', 'unload_filepath') + '.backup'
@@ -314,7 +358,7 @@ class CloneRow(object):
         sys.exit(0)
 
     def find_deltas(self):
-        """ use DictDiffer to find what's different between target and source """
+        """ use DictDiffer to find differences between target and source databases """
         logging.info('finding deltas..')
         delta = DictDiffer(self.source['row'], self.target['row'])
         self.database['deltas'] = {
@@ -325,7 +369,7 @@ class CloneRow(object):
         }
 
     def get_rows(self):
-        """ get rows from soure and target """
+        """ get a single row from soure and target databases """
         self.source['row'] = self._get_row(self.source)
         self.target['row'] = self._get_row(self.target)
         # we really need a source row..
@@ -333,8 +377,9 @@ class CloneRow(object):
             self._error('get_rows: no row found in {0} database'.format(self.source['alias']))
 
     def insert_target(self):
-        """ insert as little data as possible into the target database, if nothing exists
-            there already. This allows us to reselect and continue as normal
+        """
+        insert as little data as possible into the target database, if nothing
+        exists there already. This allows us to reselect and continue as normal
         """
         # TODO - we could find all the columns that require default values
         #        and spam defaults of the appropriate datatype in there..
@@ -355,7 +400,7 @@ class CloneRow(object):
         self.target['row'] = self._get_row(self.target)
 
     def parse_cla(self):
-        """ parse command line arguments """
+        """ parse command line arguments and setup config based on them """
         parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
         aliases = [section for section in self.config.sections() if 'host.' in section]
         parser.add_argument(
@@ -403,7 +448,7 @@ class CloneRow(object):
         self.config.set('clone_row', 'schema_only', str(args.schema_only))
 
     def print_restore_sql(self):
-        """ tell the user how to rollback by hand after script has run """
+        """ provide sql steps to rollback by hand after script has run """
         restore_sql = ['    begin;']
         restore_sql.append('    delete from {0} where {1} = {2};'.format(
             self.database['table'],
@@ -425,14 +470,14 @@ class CloneRow(object):
         return
 
     def set_connections(self):
-        """ setup soure and target connection objects """
+        """ setup soure and target MySQLdb.connection objects """
         self.source['connection'] = self._connect(self.source['alias'])
         self.target['connection'] = self._connect(self.target['alias'])
         # we don't want mysql commit stuff unless we've okay'd it
         self.target['connection'].autocommit(False)
 
     def show_schema_updates(self):
-        """ display SQL statements to adjust database for column deltas """
+        """ display SQL statements to adjust database for schema differences on this table """
         for mode in ['source', 'target']:
             deltas = self.database['deltas']['new_columns_in_' + mode]
             working_db = self.source['alias'] if mode == 'source' else self.target['alias']
@@ -466,7 +511,7 @@ class CloneRow(object):
             self.exit()
 
     def update_target(self):
-        """ update the data in the target database with differences from source """
+        """ apply differences in the source database to the target """
         delta_columns = self.database['deltas']['delta_columns']
         if not len(delta_columns):
             logging.warning('data is identical in target and source, nothing to do..')
@@ -503,7 +548,7 @@ class CloneRow(object):
         return
 
     def user_happy(self):
-        """ Give the user a chance to restore from backup easily beforer we terminate """
+        """ Give the user a chance to restore from backup automatically beforer we terminate """
         logging.info('Row has been cloned successfully..')
         logging.warning('Type \'r\' to (r)estore from backup, anything else to exit')
         descision = raw_input()

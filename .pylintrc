@@ -1,2 +1,2 @@
 [BASIC]
-ignored-classes=Connection,DictDiffer
+ignored-classes=Connection,DictDiffer,MySQLdb
