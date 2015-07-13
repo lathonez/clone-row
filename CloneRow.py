@@ -8,7 +8,6 @@ from DictDiffer import DictDiffer
 class CloneRow(object):
     """ CloneRow constructor, doesn't take any args """
     # TODO:
-    #   - pretty logging
     #   - catch the usual mysql errors and print nicely
     #   - better documentation with params etc
     #   - read everything and comment out where necessary
@@ -20,6 +19,7 @@ class CloneRow(object):
         log_level = logging.DEBUG
         coloredlogs.install(show_hostname=False, show_name=False, show_severity=False)
         logging.basicConfig(format=log_format, level=log_level)
+        logging.info('Reading configuration..')
         self.config = ConfigParser.ConfigParser(allow_no_value=True)
         self.config.readfp(open('CloneRow.cfg'))
         self.source = {
@@ -226,13 +226,15 @@ class CloneRow(object):
 
     def _print_delta_columns(self, deltas):
         """ helper function to print out columns which will be updated """
-        logging.info(self._get_log_break('|Delta Columns|'))
+        logging.info('')
+        logging.info(self._get_log_break('|Data Changes|'))
         logging.info('  The following columns will be updated on ' + self.target['alias'])
         for column in deltas:
             if column in self.database['ignore_columns']:
                 continue
             logging.info('    -%s ', column)
         logging.info(self._get_log_break())
+        logging.info('')
 
     def _restore_target(self):
         """ restore data unloaded from unload_target """
@@ -379,21 +381,24 @@ class CloneRow(object):
 
     def print_restore_sql(self):
         """ tell the user how to rollback by hand after script has run """
-        restore_manual_sql = '  begin;\n'
-        restore_manual_sql += '  delete from {0} where {1} = {2};\n'.format(
+        restore_sql = ['    begin;']
+        restore_sql.append('    delete from {0} where {1} = {2};'.format(
             self.database['table'],
             self.database['column'],
             self._quote_sql_param(self.database['filter'])
-        )
-        restore_manual_sql += '  -- the above should have delete one row, '
-        restore_manual_sql += 'if not, run: rollback;\n'
-        restore_manual_sql += '  load data infile \'{0}\' into table {1};\n'.format(
+        ))
+        restore_sql.append('    -- if more than one row has been deleted above run `rollback;`')
+        restore_sql.append('    load data infile \'{0}\' into table {1};'.format(
             self.target['backup'], self.database['table']
-        )
-        restore_manual_sql += '  commit;\n'
-        logging.warning(self._get_log_break())
-        logging.warning('To rollback manually, run the following sql on %s', self.target['alias'])
-        logging.warning(restore_manual_sql)
+        ))
+        restore_sql.append('    commit;')
+        logging.info('')
+        logging.info(self._get_log_break('Manual Rollback Steps'))
+        logging.info('  To rollback manually, run the following sql on %s', self.target['alias'])
+        for line in restore_sql:
+            logging.warning(line)
+        logging.info(self._get_log_break())
+        logging.info('')
         return
 
     def set_connections(self):
@@ -413,23 +418,25 @@ class CloneRow(object):
                 if working_db == self.source['alias'] else self.target['connection']
 
             for column in deltas:
-                logging.info(self._get_log_break('|column: {0}|'.format(column)))
+                logging.info('')
+                logging.info(self._get_log_break('|Schema Change - Column: {0}|'.format(column)))
                 logging.info(
-                    '    \'%s\' exists in the %s database but not in %s',
+                    '  Column \'%s\' exists in the %s database but not in %s',
                     column, working_db, other_db
                 )
                 info = self._get_column_sql(con, column)
                 logging.info(
-                    '    ADD COLUMN: \'%s\' to %s, run the following SQL on %s:',
+                    '  To Add Column \'%s\' to %s, run the following SQL on %s:',
                     column, other_db, other_db
                 )
                 logging.warning('    ' + info['add_sql'])
                 logging.info(
-                    '    DROP COLUMN: \'%s\' from %s, run the following SQL on %s:',
+                    '  To Drop Column \'%s\' from %s, run the following SQL on %s:',
                     column, working_db, working_db
                 )
                 logging.warning('    ' + info['drop_sql'])
                 logging.info(self._get_log_break())
+                logging.info('')
 
         if self.config.getboolean('clone_row', 'schema_only'):
             # we're done if only diffing schema
@@ -500,7 +507,7 @@ DOLLY.get_rows()
 DOLLY.insert_target()
 # find differences between source and target
 DOLLY.find_deltas()
-# display SQL updates to bring source and target tables in-line
+# display SQL updates to bring source and target table definitions in-line
 DOLLY.show_schema_updates()
 # update the target database (and back it up)
 DOLLY.update_target()
