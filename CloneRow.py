@@ -1,14 +1,12 @@
 #! /usr/local/bin/python
 """ Python module for cloning a MYSQL row from one host to another """
 
-import MySQLdb as mdb
-import argparse, coloredlogs, ConfigParser, datetime, logging, time, os, stat, sys
+import argparse, coloredlogs, ConfigParser, datetime, logging, MySQLdb, os, stat, sys, time, traceback
 from DictDiffer import DictDiffer
 
 class CloneRow(object):
     """ CloneRow constructor, doesn't take any args """
     # TODO:
-    #   - catch the usual mysql errors and print nicely
     #   - better documentation with params etc
     #   - read everything and comment out where necessary
     #   - redo example config
@@ -85,21 +83,34 @@ class CloneRow(object):
         port = self.config.getint('host.' + host_alias, 'port')
         database = self.config.get('host.' + host_alias, 'database')
         password = self.config.get('host.' + host_alias, 'password')
-        if password is not None:
-            con = mdb.connect(
-                host=hostname,
-                user=user,
-                db=database,
-                port=port,
-                passwd=password
-            )
-        else:
-            con = mdb.connect(
-                host=hostname,
-                user=user,
-                db=database,
-                port=port
-            )
+        try:
+            if password is not None:
+                con = MySQLdb.connect(
+                    host=hostname,
+                    user=user,
+                    passwd=password,
+                    db=database,
+                    port=port
+                )
+            else:
+                con = MySQLdb.connect(
+                    host=hostname,
+                    user=user,
+                    db=database,
+                    port=port
+                )
+        except MySQLdb.OperationalError, mysqlex:
+            if password is not None:
+                password = '*' * len(password)
+            logging.error('Failed to connect to database %s with credentials:', host_alias)
+            logging.error('  hostname: %s', hostname)
+            logging.error('  username: %s', user)
+            logging.error('  password: %s', password)
+            logging.error('  database: %s', database)
+            logging.error('  port: %s', port)
+            self._error(exception=mysqlex)
+
+
         version = con.get_server_info()
         logging.info(
             'connected to %s@%s:%s - Database version : %s',
@@ -117,10 +128,15 @@ class CloneRow(object):
             outfile.write(sql)
         logging.warning('update sql is available for inspection at %s on this machine', sql_file)
 
-    def _error(self, message):
+    def _error(self, message=None, exception=None):
         """ wrapper for raising errors that does housekeeping too """
         self._housekeep()
-        raise Exception('FATAL: ' + message)
+        if message is not None:
+            logging.error(message)
+        if exception is not None:
+            logging.error('original traceback below:')
+            traceback.print_exc()
+        sys.exit(1)
 
     def _get_column_sql(self, con, column):
         """ return sql to add or drop a given column from the table we're working on """
@@ -177,7 +193,14 @@ class CloneRow(object):
                 self.database['column'],
                 self._quote_sql_param(con.escape_string(self.database['filter']))
             )
-        con.query(select_sql)
+        try:
+            con.query(select_sql)
+        except MySQLdb.ProgrammingError, mysqlex:
+            logging.error('Failed to execute query on %s', host['alias'])
+            logging.error('  ' + select_sql)
+            self._error(
+                exception=mysqlex
+            )
         res = con.store_result()
         # we should only _ever_ be playing with one row, per host, at a time
         if res.num_rows() == 0:
