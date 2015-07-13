@@ -55,6 +55,7 @@ class CloneRow(object):
         Keyword arguments:
         sql_param -- the sql paramter to operate on
         """
+        # we want to quote strings and dates (and probably more..?)
         if isinstance(sql_param, str) or isinstance(sql_param, datetime.datetime):
             return '\'{0}\''.format(sql_param)
         else:
@@ -86,43 +87,28 @@ class CloneRow(object):
                       e.g. local (defined as host.local in config)
         """
         logging.info('attempting to connect to %s..', host_alias)
-        hostname = self.config.get('host.' + host_alias, 'hostname')
-        user = self.config.get('host.' + host_alias, 'username')
-        port = self.config.getint('host.' + host_alias, 'port')
-        database = self.config.get('host.' + host_alias, 'database')
+        con_args = {}
+        con_args['host'] = self.config.get('host.' + host_alias, 'hostname')
+        con_args['user'] = self.config.get('host.' + host_alias, 'username')
+        con_args['port'] = self.config.getint('host.' + host_alias, 'port')
+        con_args['db'] = self.config.get('host.' + host_alias, 'database')
         password = self.config.get('host.' + host_alias, 'password')
+        if password is not None:
+            con_args['passwd'] = password
         try:
-            if password is not None:
-                con = MySQLdb.connect(
-                    host=hostname,
-                    user=user,
-                    passwd=password,
-                    db=database,
-                    port=port
-                )
-            else:
-                con = MySQLdb.connect(
-                    host=hostname,
-                    user=user,
-                    db=database,
-                    port=port
-                )
+            con = MySQLdb.connect(**con_args)
         except MySQLdb.OperationalError, mysqlex:
             if password is not None:
                 password = '*' * len(password)
             logging.error('Failed to connect to database %s with credentials:', host_alias)
-            logging.error('  hostname: %s', hostname)
-            logging.error('  username: %s', user)
-            logging.error('  password: %s', password)
-            logging.error('  database: %s', database)
-            logging.error('  port: %s', port)
+            for key, val in con_args.iteritems():
+                logging.error('  %s: %s', key, val)
             self._error(exception=mysqlex)
-
 
         version = con.get_server_info()
         logging.info(
             'connected to %s@%s:%s - Database version : %s',
-            user, host_alias, database, version
+            con_args['user'], host_alias, con_args['db'], version
         )
         return con
 
@@ -197,7 +183,7 @@ class CloneRow(object):
         Keyword arguments:
         string -- the string to insert into the log break (if any)
         """
-        length = self.config.getint('clone_row', 'log_header_length')
+        length = self.config.getint('clone_row', 'log_break_length')
         sep = '-'
         end = '|'
         n_seps = (length - len(string) - 2) / 2
