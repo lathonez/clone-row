@@ -76,7 +76,7 @@ hostname: two.example.com
 port: 3306
 database: example_two_db
 ```
-The script is run as follows:
+If the script is run as follows, example_one is the source and example_two is the target:
 
 `CloneRow.py example_one example_two my_table my_column my_filter`
 
@@ -85,11 +85,11 @@ The equivalent in 'sql':
 select
     *
 into
-    example_one.my_table
-from
     example_two.my_table
+from
+    example_one.my_table
 where
-    example_two.my_table.my_column = my_filter
+    example_one.my_table.my_column = my_filter
 ```
 If you want to just show schema differences between the two databases on a single table, you can run:
 `CloneRow.py --schema_only example_one example_two my_table
@@ -102,6 +102,13 @@ sudo pip install -r mysql-clone-row/requirements.txt
 # add the following to .bashrc
 export PATH=$PATH:/path/to/mysql-clone-row
 ```
+
+### Creating a tunnel to mysql
+Sometimes you may not have direct access to the mysql database (e.g. the port is not exposed). To get around this you can use an ssh tunnel, if you have ssh access to the box:
+
+`ssh -L 33306:localhost:3306 my.mysql.server`
+
+You can now access the server on my.mysql.server on localhost port 33306.
 
 ### Installation Errors
 Common issues and remedies during installation
@@ -154,14 +161,6 @@ $ sudo ln -s /usr/bin/python
 ```
 
 or just run the script as `python CloneRow.py`
-
-
-## Creating a tunnel to mysql
-Sometimes you may not have direct access to the mysql database (e.g. the port is not exposed). To get around this you can use an ssh tunnel, if you have ssh access to the box:
-
-`ssh -L 33306:localhost:3306 my.mysql.server`
-
-You can now access the server on my.mysql.server on localhost port 33306.
 
 ##Credits
 * [mysql-python](http://mysql-python.sourceforge.net/MySQLdb.html)
