@@ -76,7 +76,7 @@ hostname: two.example.com
 port: 3306
 database: example_two_db
 ```
-If the script is run as follows, example_one is the source and example_two is the target:
+If the script is run as follows, `example_one` is the source and `example_two` is the target:
 
 `CloneRow.py example_one example_two my_table my_column my_filter`
 
