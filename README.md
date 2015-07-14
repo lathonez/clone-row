@@ -21,7 +21,7 @@ However, I have found that there are several use-cases for this application:
 ## Configuration
 * An example configration file [CloneRow.example.cfg](https://github.com/lathonez/mysql-clone-row/blob/master/CloneRow.example.cfg) is provided
 * This needs to be copied to `CloneRow.cfg` in the same directory and configured for your system
-* The main sections of the config file are host aliases. These allow you to configre multiple databases hosts and refer to them easily from the command line. An example is as follows:
+* The main sections of the config file are host aliases. These allow you to configre multiple databases hosts and refer to them easily from the command line.
 ```
 [host.example_one]
 username: example_one_user
