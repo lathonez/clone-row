@@ -11,11 +11,12 @@ class CloneRow(object):
     #   - README.md
 
     def __init__(self):
+        self._check_config_chmod()
         coloredlogs.install(show_hostname=False, show_name=False, show_severity=False)
         logging.info('Reading configuration..')
         self.config = ConfigParser.ConfigParser(allow_no_value=True)
         try:
-            self.config.readfp(open('CloneRow.cfg'))
+            self.config.readfp(open(os.path.dirname(os.path.realpath(__file__)) + '/CloneRow.cfg'))
         except IOError:
             logging.error('You have not setup a CloneRow.cfg file for your requirements')
             logging.info('take a look at CloneRow.example.cfg')
@@ -44,40 +45,17 @@ class CloneRow(object):
         self.target_insert = False
 
     #
-    # PRIVATE classmethods
+    # PRIVATE methods
     #
 
     @classmethod
-    def _quote_sql_param(cls, sql_param):
-        """
-        encapsulate an sql paramter in quotes if necessary
-        param should be escaped (Connection.escape_string) before it's passed in
-
-        Keyword arguments:
-        sql_param -- the sql paramter to operate on
-        """
-        # we want to quote strings and dates (and probably more..?)
-        if isinstance(sql_param, str) or isinstance(sql_param, datetime.datetime):
-            return '\'{0}\''.format(sql_param)
-        else:
-            # doesn't need quoting
-            return sql_param
-
-    #
-    # PUBLIC classmethods
-    #
-
-    @classmethod
-    def check_config_chmod(cls):
+    def _check_config_chmod(cls):
         """ make sure the file permissions of CloneRow.cfg are 0600 """
-        chmod = oct(stat.S_IMODE(os.stat('CloneRow.cfg').st_mode))
+        cfg_path = os.path.dirname(os.path.realpath(__file__)) + '/CloneRow.cfg'
+        chmod = oct(stat.S_IMODE(os.stat(cfg_path).st_mode))
         if chmod != '0600':
             logging.error('CloneRow.cfg needs to be secure: `chmod 0600 CloneRow.cfg`')
             sys.exit(1)
-
-    #
-    # PRIVATE methods
-    #
 
     def _connect(self, host_alias):
         """
@@ -300,6 +278,22 @@ class CloneRow(object):
         logging.info(self._get_log_break())
         logging.info('')
 
+    @classmethod
+    def _quote_sql_param(cls, sql_param):
+        """
+        encapsulate an sql paramter in quotes if necessary
+        param should be escaped (Connection.escape_string) before it's passed in
+
+        Keyword arguments:
+        sql_param -- the sql paramter to operate on
+        """
+        # we want to quote strings and dates (and probably more..?)
+        if isinstance(sql_param, str) or isinstance(sql_param, datetime.datetime):
+            return '\'{0}\''.format(sql_param)
+        else:
+            # doesn't need quoting
+            return sql_param
+
     def _restore_target(self):
         """ restore data unloaded from the target database """
         cur = self.target['connection'].cursor()
@@ -449,6 +443,7 @@ class CloneRow(object):
         self.database['column'] = args.column
         self.database['filter'] = args.filter
         self._get_table_config(self.database['table'])
+        self.config.add_section('clone_row')
         self.config.set('clone_row', 'unload_dir', args.unload_dir)
         self.config.set('clone_row', 'unload_filepath', self._get_unload_filepath())
         self.config.set('clone_row', 'schema_only', str(args.schema_only))
@@ -571,7 +566,7 @@ class CloneRow(object):
 #
 DOLLY = CloneRow()
 # make sure the config file has correct permissions (0600)
-DOLLY.check_config_chmod()
+
 # parse command line arguments from the user
 DOLLY.parse_cla()
 # establish a connection to source and target databases
