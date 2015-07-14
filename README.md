@@ -2,16 +2,16 @@
 Clone a row from one mysql database to another
 
 ## Features
-* Ignore schema differences, common columns will always be cloned regardless of columns definitions that re missing from target or source databases
+* Ignore schema differences, common columns will be cloned regardless of definitions that are missing from target or source databases
 * Fail-safe operation, with automated and manual rollback procedures provided
-* Checkpoint so you can check the target system before 'committing' the changes
+* Checkpointing, so you can check the target system before 'committing' the changes
 * Hint at schema updates required, providing SQL to bring source table in line with target, or vice versa
 * Ignore columns you never want to update (typically serials)
 * Setup database aliases for ease of use (e.g. local, dev, test, integration, prod)
 
 ## There are existing tools for this!
 There are many industry standard tools that could (and should) be used instead of mysql-clone-row, if applicable. Examples include [mysqldump](https://dev.mysql.com/doc/refman/5.1/en/mysqldump.html), [replication](https://dev.mysql.com/doc/refman/5.0/en/replication.html) and simply [select into outfile](https://dev.mysql.com/doc/refman/5.1/en/select-into.html).
-However, I have found that there are usecases for this application:
+However, I have found that there are several use-cases for this application:
 * Many databases containing rich data which is modified little and often
 * Wide tables with multiple changes that are hard to keep track of during the release cycle
 * No version control for data (or data insertion scripts), making changes hard to audit
