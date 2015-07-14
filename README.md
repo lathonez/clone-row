@@ -91,8 +91,10 @@ from
 where
     example_one.my_table.my_column = my_filter
 ```
-If you want to just show schema differences between the two databases on a single table, you can run:
-`CloneRow.py --schema_only example_one example_two my_table
+If you want to just show schema differences between the two databases on a single table, you can do:
+
+`CloneRow.py --schema_only example_one example_two my_table`
+
 This saves you having to find a column filter if you just want to work out the schema updates
 
 ## Installation
