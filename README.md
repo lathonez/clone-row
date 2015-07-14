@@ -2,10 +2,10 @@
 Clone a row from one mysql database to another
 
 ## Features
-* Ignore schema differences, common columns will always be cloned regardless of various other columns that are missing from target or source
-* Hint at schema updates required, providing SQL to bring source table in line with target, or vice versa
+* Ignore schema differences, common columns will always be cloned regardless of columns definitions that re missing from target or source databases
 * Fail-safe operation, with automated and manual rollback procedures provided
 * Checkpoint so you can check the target system before 'committing' the changes
+* Hint at schema updates required, providing SQL to bring source table in line with target, or vice versa
 * Ignore columns you never want to update (typically serials)
 * Setup database aliases for ease of use (e.g. local, dev, test, integration, prod)
 
