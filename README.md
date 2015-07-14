@@ -36,7 +36,7 @@ optional arguments:
 
 ## Installation
 ```
-https://github.com/lathonez/mysql-clone-row.git
+git clone https://github.com/lathonez/mysql-clone-row.git
 sudo pip install -r mysql-clone-row/requirements.txt
 # add the following to .bashrc
 export PATH=$PATH:/path/to/mysql-clone-row
