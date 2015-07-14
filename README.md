@@ -1,9 +1,7 @@
 # mysql-clone-row
 Python utility to clone a row in mysql, from a target to source database, field by field
 
-## Installation
-* `sudo pip install python-mysqldb ConfigParser`
-* `git clone git@github.com:lathonez/mysql-clone-row.git`
+
 
 ## Configuration
 * The config file CloneRow.cfg needs to have 0600 permissions as it may contain mysql passwords
@@ -14,23 +12,85 @@ Python utility to clone a row in mysql, from a target to source database, field 
 ## Usage
 
 ```shell
-    usage: CloneRow.py [-h]
-                       source_host target_host database table column column_filter
+    air:~/code/mysql-clone-row$ ./CloneRow.py -h
+    2015-07-14 21:20:38 Reading configuration..
+    usage: CloneRow.py [-h] [--schema_only] [--unload_dir UNLOAD_DIR]
+                       {local,dev} {local,dev} table [column] [filter]
 
     positional arguments:
-      source_host    source hostname: should be defined in config
-      target_host    target hostname: should be defined in config
-      database       database name: same on source and target host
-      table          table to consider: select from <table>
-      column         column to consider: select from table where <column>
-      column_filter  value to filter column: select from table where column =
-                     <column_filter>
+      {local,dev}           source host alias (for host.* config section)
+      {local,dev}           target host alias (for host.* section)
+      table                 table to consider: select from <table>
+      column                column to consider: select from table where <column>
+                            (default: None)
+      filter                value to filter column: select from table where column
+                            = <filter> (default: None)
 
     optional arguments:
-      -h, --help     show this help message and exit
+      -h, --help            show this help message and exit
+      --schema_only, -s     diff schema only, do not consider data (column and
+                            filter not required) (default: False)
+      --unload_dir UNLOAD_DIR, -u UNLOAD_DIR
+                            directory to unload backups and update sql dumps to
+                            (default: /tmp)
 ```
 
-## Creating a tunnel to mysql
+## Installation
+* `git clone git@github.com:lathonez/mysql-clone-row.git`
+* `sudo pip install -r mysql-clone-row/requirements.txt`
+
+### Installation Errors
+Common issues and remedies during installation
+* mysql-python install failing (part of requirements.txt)
+
+```shell
+    Traceback (most recent call last):
+
+      File "<string>", line 17, in <module>
+
+      File "/tmp/pip_build_shazleto/MySQL-python/setup.py", line 17, in <module>
+
+        metadata, options = get_config()
+
+      File "setup_posix.py", line 43, in get_config
+
+        libs = mysql_config("libs_r")
+
+      File "setup_posix.py", line 25, in mysql_config
+
+        raise EnvironmentError("%s not found" % (mysql_config.path,))
+
+    EnvironmentError: mysql_config not found
+
+    ----------------------------------------
+    Cleaning up...
+    Command python setup.py egg_info failed with error code 1 in /tmp/pip_build_shazleto/MySQL-python
+```
+
+If you see the above error, try installing libmysqlclient:
+
+`sudo apt-get install libmysqlclient-dev`
+
+* bad interpreter
+
+```shell
+    dev:~/mysql-clone-row$ ./CloneRow.py
+    -bash: ./CloneRow.py: /usr/local/bin/python: bad interpreter: No such file or directory
+```
+
+If you see the above error, your python interpreter is probably not located in the usual location (/usr/local/bin/python). You can either symlink in the correct location:
+
+```
+    dev:~/mysql-clone-row$ which python
+    /usr/bin/python
+    dev:~/mysql-clone-row$ cd /usr/local/bin/
+    dev:/usr/local/bin$ sudo ln -s /usr/bin/python
+```
+
+or just run the script as `python CloneRow.py`
+
+
+## Creating a tunnel to mysql1
 Sometimes you may not have direct access to the mysql database (e.g. the port is not exposed). To get around this you can use an ssh tunnel, if you have ssh access to the box:
 
 ```shell
