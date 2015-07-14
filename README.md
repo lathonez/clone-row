@@ -38,17 +38,15 @@ database: example_one_db
 
 ```
 usage: CloneRow.py [-h] [--schema_only] [--unload_dir UNLOAD_DIR]
-                   {host_one,host_two} {host_one,host_two} table [column]
-                   [filter]
+                   {example_one,example_two} {example_one,example_two} table
+                   [column] [filter]
 
 positional arguments:
-  {host_one,host_two}   source host alias (for host.* config section)
-  {host_one,host_two}   target host alias (for host.* section)
-  table                 table to consider: select from <table>
-  column                column to consider: select from table where <column>
-                        (default: None)
-  filter                value to filter column: select from table where column
-                        = <filter> (default: None)
+  {example_one,example_two}  source host alias (for host.* config section)
+  {example_one,example_two}  target host alias (for host.* section)
+  table                      table to consider
+  column                     column to consider
+  filter                     value to filter column (where column = filter)
 
 optional arguments:
   -h, --help            show this help message and exit
