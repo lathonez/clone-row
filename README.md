@@ -59,7 +59,7 @@ optional arguments:
                         (default: /tmp)
 ```
 
-## Usage example from [CloneRow.example.cfg](https://github.com/lathonez/mysql-clone-row/blob/master/CloneRow.example.cfg)
+## Usage example
 Taking the following two host aliases:
 ```
 [host.example_one]
