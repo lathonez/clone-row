@@ -19,10 +19,20 @@ However, I have found that there are several use-cases for this application:
 * No CMS for making simple changes to data rows across multiple databases
 
 ## Configuration
-* The config file CloneRow.cfg needs to have 0600 permissions as it may contain mysql passwords
-* `source_host` and `target_host` (command line arguments), must be sections defined in config (as per the example CloneRow.cfg)
-* Use 127.0.0.1 instead of localhost. If you speciy localhost, mysql will use unix sockets and ignore the port argument
-* If you don't need to use a password to access your database, leave the value as empty, e.g. `password:`
+* An example configration file [CloneRow.example.cfg](https://github.com/lathonez/mysql-clone-row/blob/master/CloneRow.example.cfg) is provided
+* This needs to be copied to `CloneRow.cfg` in the same directory and configured for your system
+* The main sections of the config file are host aliases. These allow you to configre multiple databases hosts and refer to them easily from the command line. An example is as follows:
+```
+[host.example_one]
+username: example_one_user
+password: example_one_pass
+hostname: one.example.com
+port: 3306
+database: example_one_db
+```
+* The config file needs to have 0600 permissions as it is likely to contain mysql passwords. If you do not set the correct permissions the app will not run.
+* Use 127.0.0.1 instead of localhost. If you speciy localhost, mysql will use unix sockets and ignore the port argument you have configured
+* If you don't need to use a password to access your database, leave the value as empty, e.g. `password:` (see example linked above)
 
 ## Usage
 
