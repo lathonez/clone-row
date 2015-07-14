@@ -417,15 +417,11 @@ class CloneRow(object):
             choices=[alias[5:] for alias in aliases]
         )
         parser.add_argument('table', help='table to consider: select from <table>')
-        parser.add_argument(
-            'column',
-            nargs='?',
-            help='column to consider: select from table where <column>'
-        )
+        parser.add_argument('column', nargs='?', help='column to consider')
         parser.add_argument(
             'filter',
             nargs='?',
-            help='value to filter column: select from table where column = <filter>'
+            help='value to filter column: where column = <filter>'
         )
         args = parser.parse_args()
         # we either need --schema_only or column AND filter passed in
