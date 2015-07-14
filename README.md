@@ -30,7 +30,7 @@ hostname: one.example.com
 port: 3306
 database: example_one_db
 ```
-* The config file needs to have 0600 permissions as it is likely to contain mysql passwords. If you do not set the correct permissions the script will not run.
+* `CloneRow.cfg` needs to have 0600 permissions as it is likely to contain mysql passwords. If you do not set the correct permissions the script will not run.
 * Use 127.0.0.1 instead of localhost. If you speciy localhost, mysql will use unix sockets and ignore the port argument you have configured
 * If you don't need to use a password to access your database, leave the value as empty, e.g. `password:` (see example linked above)
 
