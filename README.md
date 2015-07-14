@@ -9,7 +9,7 @@ Clone a row from one mysql database to another
 * Ignore columns you never want to update (typically serials)
 * Setup database aliases for ease of use (e.g. local, dev, test, integration, prod)
 
-## There are things that do this already!
+## There are existing tools for this!
 There are many industry standard tools that could (and should) be used instead of mysql-clone-row, if applicable. Examples include [mysqldump](https://dev.mysql.com/doc/refman/5.1/en/mysqldump.html), [replication](https://dev.mysql.com/doc/refman/5.0/en/replication.html) and simply [select into outfile](https://dev.mysql.com/doc/refman/5.1/en/select-into.html).
 However, I have found that there are usecases for this application:
 * Many databases containing rich data which is modified little and often
