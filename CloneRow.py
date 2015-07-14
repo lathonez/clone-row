@@ -8,18 +8,19 @@ from DictDiffer import DictDiffer
 class CloneRow(object):
     """ CloneRow constructor """
     # TODO:
-    #   - read everything and comment out where necessary
-    #   - redo example config
     #   - README.md
 
     def __init__(self):
-        log_format = '[%(asctime)s]: %(message)s'
-        log_level = logging.DEBUG
         coloredlogs.install(show_hostname=False, show_name=False, show_severity=False)
-        logging.basicConfig(format=log_format, level=log_level)
         logging.info('Reading configuration..')
         self.config = ConfigParser.ConfigParser(allow_no_value=True)
-        self.config.readfp(open('CloneRow.cfg'))
+        try:
+            self.config.readfp(open('CloneRow.cfg'))
+        except IOError:
+            logging.error('You have not setup a CloneRow.cfg file for your requirements')
+            logging.info('take a look at CloneRow.example.cfg')
+            logging.info('https://github.com/lathonez/mysql-clone-row#configuration')
+            sys.exit(1)
         self.source = {
             'alias': None,
             'print_alias': None,
@@ -99,12 +100,12 @@ class CloneRow(object):
             con = MySQLdb.connect(**con_args)
         except MySQLdb.OperationalError, mysqlex:
             if password is not None:
+                # don't want to be logging out passwords really, use * instead
                 password = '*' * len(password)
             logging.error('Failed to connect to database %s with credentials:', host_alias)
             for key, val in con_args.iteritems():
                 logging.error('  %s: %s', key, val)
             self._error(exception=mysqlex)
-
         version = con.get_server_info()
         logging.info(
             'connected to %s@%s:%s - Database version : %s',
@@ -119,8 +120,8 @@ class CloneRow(object):
         Keyword arguments:
         cursor -- MySQLdb.cursor object of the connection we're dumping
         """
-        # naughty naughty, accessing a protected member.. show me a better way
         logging.info('dumping update sql to disk..')
+        # naughty naughty, accessing a protected member.. show me a better way
         sql = cursor._last_executed
         sql_file = self.config.get('clone_row', 'unload_filepath') + '.sql'
         with open(sql_file, "w") as outfile:
@@ -139,6 +140,7 @@ class CloneRow(object):
         if message is not None:
             logging.error(message)
         if exception is not None:
+            # if you re-raise the original exception (e.g. raise exception), you lose traceback
             logging.error('original traceback below:')
             traceback.print_exc()
         sys.exit(1)
@@ -152,6 +154,7 @@ class CloneRow(object):
         column -- the column to return sql for
         """
         drop_sql = 'alter table `{0}` drop column `{1}`;'.format(self.database['table'], column)
+        # using con.query instead of con.cursor.execute gives us a nicer return format
         con.query('show fields from {0} where field = \'{1}\''.format(
             self.database['table'],
             column
@@ -159,38 +162,40 @@ class CloneRow(object):
         res = con.store_result()
         if res.num_rows() != 1:
             self._error('get_column_sql: only one row expected!')
+        # using how=1 and parsing into a dict lets us manipulate with the returned data easily
         column_info = dict(res.fetch_row(how=1)[0])
         not_null = '' if column_info['Null'] == 'YES' else ' not null'
         default = '' if column_info['Default'] is None else ' default ' + column_info['Default']
         add_sql = 'alter table `{0}` add column `{1}` {2}{3}{4};'.format(
-            self.database['table'],
-            column,
-            column_info['Type'],
-            default,
-            not_null
+            self.database['table'], column, column_info['Type'], default, not_null
         )
         return {
             'add_sql': add_sql,
             'drop_sql': drop_sql
         }
 
-    def _get_log_break(self, string=''):
+    @classmethod
+    def _get_log_break(cls, string=''):
         """
-        return a string in the form of {end}{sep}{string}{sep}{end}, seps are repeated so
-        that the returned string will always the length configured in log_break_length
+        return a string in the form of {end}{sep}{string}{sep}{end},
+        seps are repeated so the returned string will always be the same length
         e.g. |------------{string}------------|
 
         Keyword arguments:
         string -- the string to insert into the log break (if any)
         """
-        length = self.config.getint('clone_row', 'log_break_length')
+        length = 80
         sep = '-'
         end = '|'
+        # how many seps do wwe need each side of the string?
         n_seps = (length - len(string) - 2) / 2
+        # generate the log header, this might be one sep shorter than we need
+        # if the string length is not an even number
         log_header = end + (sep * n_seps) + string + (sep * n_seps)
         if len(log_header) < length -1:
             # uneven length
             log_header += sep
+        # finish it off with the end character
         log_header += end
         return log_header
 
@@ -206,25 +211,25 @@ class CloneRow(object):
         con = host['connection']
         if self.config.getboolean('clone_row', 'schema_only'):
             # if we're only doing schema diffs we don't care about columns or filters
+            # we can just select the first row from the table
             select_sql = 'select * from {0} limit 1'.format(self.database['table'])
         else:
-            # we're not using cursors here because we want the nice object with column headers
             select_sql = 'select * from {0} where {1} = {2}'.format(
                 self.database['table'],
                 self.database['column'],
                 self._quote_sql_param(con.escape_string(self.database['filter']))
             )
         try:
+            # again, we're not using cursors here because we want a nicely formatted dict
             con.query(select_sql)
         except MySQLdb.ProgrammingError, mysqlex:
             logging.error('Failed to execute query on %s', host['alias'])
             logging.error('  ' + select_sql)
-            self._error(
-                exception=mysqlex
-            )
+            self._error(exception=mysqlex)
         res = con.store_result()
         # we should only _ever_ be playing with one row, per host, at a time
         if res.num_rows() == 0:
+            # this is an error case on the source database, will be dealt with later
             return None
         if res.num_rows() != 1:
             self._error('get_row: Only one row expected -- cannot clone on multiple rows!')
@@ -243,6 +248,7 @@ class CloneRow(object):
             logging.warning('no table specific config defined for %s', table)
             return
         try:
+            # unfortunately ConfigParser doesn't support lists, this is as nice as anything
             self.database['ignore_columns'] = self.config.get(
                 table_section, 'ignore_columns'
             ).rsplit(',')
@@ -255,7 +261,11 @@ class CloneRow(object):
             return
 
     def _get_unload_filepath(self):
-        """ return the unload filepath for us to use for backups and sql dumps """
+        """
+        return the unload filepath for us to use for backups and sql dumps
+        in the format of /dir/table-column-filter-millis
+        we're after something unique for this run hence millis
+        """
         unload_file = self.config.get('clone_row', 'unload_dir')
         unload_file += '/{0}-{1}-{2}-{3}'.format(
             self.database['table'],
@@ -266,7 +276,7 @@ class CloneRow(object):
         return unload_file
 
     def _housekeep(self):
-        """ close connections any existing connections """
+        """ close any existing connections """
         logging.info('housekeeping..')
         if self.source['connection'] is not None:
             self.source['connection'].close()
@@ -283,6 +293,7 @@ class CloneRow(object):
         logging.info('')
         logging.info(self._get_log_break('|Data Changes|'))
         logging.info('  The following columns will be updated on ' + self.target['alias'])
+        # don't print stuff that we've been told to ignore
         deltas = [d for d in deltas if d not in self.database['ignore_columns']]
         for column in deltas:
             logging.info('    -%s ', column)
@@ -293,8 +304,7 @@ class CloneRow(object):
         """ restore data unloaded from the target database """
         cur = self.target['connection'].cursor()
         delete_sql = 'delete from {0} where {1} = %s'.format(
-            self.database['table'],
-            self.database['column']
+            self.database['table'], self.database['column']
         )
         cur.execute(delete_sql, (self.database['filter'], ))
         if self.target['connection'].affected_rows() != 1:
@@ -303,9 +313,12 @@ class CloneRow(object):
             self._error('restore_target: expected to delete only one row')
         if self.target_insert:
             logging.warning('deleting (not restoring) as target row was inserted from scratch')
+            # there was no row here when we started the script, so we just need to
+            # delete what was inserted (done above)
             cur.close()
             self.target['connection'].commit()
             return
+        # if we've got this far we do need to restore something from the backup file
         restore_sql = 'load data infile \'{0}\' into table {1}'.format(
             self.target['backup'],
             self.database['table']
@@ -367,17 +380,17 @@ class CloneRow(object):
         insert as little data as possible into the target database, if nothing
         exists there already. This allows us to reselect and continue as normal
         """
-        # TODO - we could find all the columns that require default values
-        #        and spam defaults of the appropriate datatype in there..
         if self.target['row'] is not None:
             # we only need to do this if there's no target row
             return
         logging.info('inserting a minimal row into target database..')
         cur = self.target['connection'].cursor()
         insert_sql = 'insert into {0} ({1}) values (%s)'.format(
-            self.database['table'],
-            self.database['column']
+            self.database['table'], self.database['column']
         )
+        # what we're doing here is just putting a single row containing the column
+        # and any columns which have default values into the db, we will update them
+        # as normal later on in the script
         cur.execute(insert_sql, (self.database['filter'],))
         if self.target['connection'].affected_rows() != 1:
             cur.close()
@@ -394,6 +407,11 @@ class CloneRow(object):
             help='diff schema only, do not consider data (column and filter not required)',
             action='store_true',
             default=False
+        )
+        parser.add_argument(
+            '--unload_dir', '-u',
+            help='directory to unload backups and update sql dumps to',
+            default='/tmp'
         )
         parser.add_argument(
             'source_alias',
@@ -417,6 +435,7 @@ class CloneRow(object):
             help='value to filter column: select from table where column = <filter>'
         )
         args = parser.parse_args()
+        # we either need --schema_only or column AND filter passed in
         if not args.schema_only and (args.column is None or args.filter is None):
             print '\n', \
                 'column & filter arguments must be supplied unless running with --schema_only/-s\n'
@@ -430,6 +449,7 @@ class CloneRow(object):
         self.database['column'] = args.column
         self.database['filter'] = args.filter
         self._get_table_config(self.database['table'])
+        self.config.set('clone_row', 'unload_dir', args.unload_dir)
         self.config.set('clone_row', 'unload_filepath', self._get_unload_filepath())
         self.config.set('clone_row', 'schema_only', str(args.schema_only))
 
@@ -523,6 +543,7 @@ class CloneRow(object):
         update_params.append(self.database['filter'])
         # run the update
         cur.execute(update_sql, tuple(update_params))
+        # dump the actual update sql out to disk so we can look at it later if necessary
         self._dump_update_sql(cur)
         if self.target['connection'].affected_rows() != 1:
             self.target['connection'].rollback()
