@@ -13,11 +13,12 @@ Python utility to clone a row in mysql, from a target to source database, field 
 
 ```
     usage: CloneRow.py [-h] [--schema_only] [--unload_dir UNLOAD_DIR]
-                       {local,dev} {local,dev} table [column] [filter]
+                       {host_one,host_two} {host_one,host_two} table [column]
+                       [filter]
 
     positional arguments:
-      {local,dev}           source host alias (for host.* config section)
-      {local,dev}           target host alias (for host.* section)
+      {host_one,host_two}   source host alias (for host.* config section)
+      {host_one,host_two}   target host alias (for host.* section)
       table                 table to consider: select from <table>
       column                column to consider: select from table where <column>
                             (default: None)
