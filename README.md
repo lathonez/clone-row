@@ -11,7 +11,7 @@ Python utility to clone a row in mysql, from a target to source database, field 
 
 ## Usage
 
-```shell
+```
     usage: CloneRow.py [-h] [--schema_only] [--unload_dir UNLOAD_DIR]
                        {local,dev} {local,dev} table [column] [filter]
 
