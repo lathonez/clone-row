@@ -40,7 +40,7 @@ Python utility to clone a row in mysql, from a target to source database, field 
 
 ### Installation Errors
 Common issues and remedies during installation
-* mysql-python install failing (part of requirements.txt)
+####mysql-python install failing (part of requirements.txt)
 
 ```shell
     Traceback (most recent call last):
