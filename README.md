@@ -43,29 +43,29 @@ Common issues and remedies during installation
 ####mysql-python install failing
 
 ```shell
-    sudo pip install -r mysql-clone-row/requirements.txt
-    ...
-    Traceback (most recent call last):
+sudo pip install -r mysql-clone-row/requirements.txt
+...
+Traceback (most recent call last):
 
-      File "<string>", line 17, in <module>
+  File "<string>", line 17, in <module>
 
-      File "/tmp/pip_build_shazleto/MySQL-python/setup.py", line 17, in <module>
+  File "/tmp/pip_build_shazleto/MySQL-python/setup.py", line 17, in <module>
 
-        metadata, options = get_config()
+    metadata, options = get_config()
 
-      File "setup_posix.py", line 43, in get_config
+  File "setup_posix.py", line 43, in get_config
 
-        libs = mysql_config("libs_r")
+    libs = mysql_config("libs_r")
 
-      File "setup_posix.py", line 25, in mysql_config
+  File "setup_posix.py", line 25, in mysql_config
 
-        raise EnvironmentError("%s not found" % (mysql_config.path,))
+    raise EnvironmentError("%s not found" % (mysql_config.path,))
 
-    EnvironmentError: mysql_config not found
+EnvironmentError: mysql_config not found
 
-    ----------------------------------------
-    Cleaning up...
-    Command python setup.py egg_info failed with error code 1 in /tmp/pip_build_shazleto/MySQL-python
+----------------------------------------
+Cleaning up...
+Command python setup.py egg_info failed with error code 1 in /tmp/pip_build_shazleto/MySQL-python
 ```
 
 If you see the above error, try installing libmysqlclient:
@@ -75,17 +75,17 @@ If you see the above error, try installing libmysqlclient:
 ####bad interpreter
 
 ```shell
-    dev:~/mysql-clone-row$ ./CloneRow.py
-    -bash: ./CloneRow.py: /usr/local/bin/python: bad interpreter: No such file or directory
+dev:~/mysql-clone-row$ ./CloneRow.py
+-bash: ./CloneRow.py: /usr/local/bin/python: bad interpreter: No such file or directory
 ```
 
 If you see the above error, your python interpreter is probably not located in the usual location (/usr/local/bin/python). You can either symlink in the correct location:
 
 ```
-    $ which python
-    /usr/bin/python
-    $ cd /usr/local/bin/
-    $ sudo ln -s /usr/bin/python
+$ which python
+/usr/bin/python
+$ cd /usr/local/bin/
+$ sudo ln -s /usr/bin/python
 ```
 
 or just run the script as `python CloneRow.py`
