@@ -37,6 +37,7 @@ optional arguments:
 ## Installation
 * `git clone git@github.com:lathonez/mysql-clone-row.git`
 * `sudo pip install -r mysql-clone-row/requirements.txt`
+* add mysql-clone-row to PATH (optional)! `export PATH=$PATH:/path/to/mysql-clone-row`
 
 ### Installation Errors
 Common issues and remedies during installation
@@ -91,7 +92,7 @@ $ sudo ln -s /usr/bin/python
 or just run the script as `python CloneRow.py`
 
 
-## Creating a tunnel to mysql1
+## Creating a tunnel to mysql
 Sometimes you may not have direct access to the mysql database (e.g. the port is not exposed). To get around this you can use an ssh tunnel, if you have ssh access to the box:
 
 ```shell
