@@ -12,26 +12,26 @@ Python utility to clone a row in mysql, from a target to source database, field 
 ## Usage
 
 ```
-    usage: CloneRow.py [-h] [--schema_only] [--unload_dir UNLOAD_DIR]
-                       {host_one,host_two} {host_one,host_two} table [column]
-                       [filter]
+usage: CloneRow.py [-h] [--schema_only] [--unload_dir UNLOAD_DIR]
+                   {host_one,host_two} {host_one,host_two} table [column]
+                   [filter]
 
-    positional arguments:
-      {host_one,host_two}   source host alias (for host.* config section)
-      {host_one,host_two}   target host alias (for host.* section)
-      table                 table to consider: select from <table>
-      column                column to consider: select from table where <column>
-                            (default: None)
-      filter                value to filter column: select from table where column
-                            = <filter> (default: None)
+positional arguments:
+  {host_one,host_two}   source host alias (for host.* config section)
+  {host_one,host_two}   target host alias (for host.* section)
+  table                 table to consider: select from <table>
+  column                column to consider: select from table where <column>
+                        (default: None)
+  filter                value to filter column: select from table where column
+                        = <filter> (default: None)
 
-    optional arguments:
-      -h, --help            show this help message and exit
-      --schema_only, -s     diff schema only, do not consider data (column and
-                            filter not required) (default: False)
-      --unload_dir UNLOAD_DIR, -u UNLOAD_DIR
-                            directory to unload backups and update sql dumps to
-                            (default: /tmp)
+optional arguments:
+  -h, --help            show this help message and exit
+  --schema_only, -s     diff schema only, do not consider data (column and
+                        filter not required) (default: False)
+  --unload_dir UNLOAD_DIR, -u UNLOAD_DIR
+                        directory to unload backups and update sql dumps to
+                        (default: /tmp)
 ```
 
 ## Installation
