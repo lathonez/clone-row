@@ -40,9 +40,11 @@ Python utility to clone a row in mysql, from a target to source database, field 
 
 ### Installation Errors
 Common issues and remedies during installation
-####mysql-python install failing (part of requirements.txt)
+####mysql-python install failing
 
 ```shell
+    sudo pip install -r mysql-clone-row/requirements.txt
+    ...
     Traceback (most recent call last):
 
       File "<string>", line 17, in <module>
@@ -70,7 +72,7 @@ If you see the above error, try installing libmysqlclient:
 
 `sudo apt-get install libmysqlclient-dev`
 
-* bad interpreter
+####bad interpreter
 
 ```shell
     dev:~/mysql-clone-row$ ./CloneRow.py
@@ -80,10 +82,10 @@ If you see the above error, try installing libmysqlclient:
 If you see the above error, your python interpreter is probably not located in the usual location (/usr/local/bin/python). You can either symlink in the correct location:
 
 ```
-    dev:~/mysql-clone-row$ which python
+    $ which python
     /usr/bin/python
-    dev:~/mysql-clone-row$ cd /usr/local/bin/
-    dev:/usr/local/bin$ sudo ln -s /usr/bin/python
+    $ cd /usr/local/bin/
+    $ sudo ln -s /usr/bin/python
 ```
 
 or just run the script as `python CloneRow.py`
