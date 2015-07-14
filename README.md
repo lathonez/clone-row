@@ -30,7 +30,7 @@ hostname: one.example.com
 port: 3306
 database: example_one_db
 ```
-* The config file needs to have 0600 permissions as it is likely to contain mysql passwords. If you do not set the correct permissions the app will not run.
+* The config file needs to have 0600 permissions as it is likely to contain mysql passwords. If you do not set the correct permissions the script will not run.
 * Use 127.0.0.1 instead of localhost. If you speciy localhost, mysql will use unix sockets and ignore the port argument you have configured
 * If you don't need to use a password to access your database, leave the value as empty, e.g. `password:` (see example linked above)
 
@@ -58,6 +58,40 @@ optional arguments:
                         directory to unload backups and update sql dumps to
                         (default: /tmp)
 ```
+
+## Usage example from [CloneRow.example.cfg](https://github.com/lathonez/mysql-clone-row/blob/master/CloneRow.example.cfg)
+Taking the following two host aliases:
+```
+[host.example_one]
+username: example_one_user
+password: example_one_pass
+hostname: one.example.com
+port: 3306
+database: example_one_db
+
+[host.example_two]
+username: example_two_user
+password: example_two_pass
+hostname: two.example.com
+port: 3306
+database: example_two_db
+```
+The script is run as follows:
+`CloneRow.py example_one example_two my_table my_column my_filter`
+The equivalent in 'sql':
+```sql
+select
+    *
+into
+    example_one.my_table
+from
+    example_two.my_table
+where
+    example_two.my_table.my_column = my_filter
+```
+If you want to just show schema differences between the two databases on a single table, you can run:
+`CloneRow.py --schema_only example_one example_two my_table
+This saves you having to find a column filter if you just want to work out the schema updates
 
 ## Installation
 ```
