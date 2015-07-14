@@ -49,12 +49,11 @@ positional arguments:
   filter                     value to filter column (where column = filter)
 
 optional arguments:
-  -h, --help            show this help message and exit
-  --schema_only, -s     diff schema only, do not consider data (column and
-                        filter not required) (default: False)
-  --unload_dir UNLOAD_DIR, -u UNLOAD_DIR
-                        directory to unload backups and update sql dumps to
-                        (default: /tmp)
+  -h, --help                 show this help message and exit
+  --schema_only, -s          diff schema only, do not consider data (column and
+                             filter not required) (default: False)
+  --unload_dir UNLOAD_DIR,   directory to unload backups and update sql dumps to
+  -u UNLOAD_DIR              (default: /tmp)
 ```
 
 ## Usage example
