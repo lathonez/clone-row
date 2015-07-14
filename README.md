@@ -60,7 +60,7 @@ optional arguments:
 ```
 
 ## Usage example
-Taking the following two host aliases:
+Taking the following two host aliases (defined in your CloneRow.cfg):
 ```
 [host.example_one]
 username: example_one_user
@@ -77,7 +77,9 @@ port: 3306
 database: example_two_db
 ```
 The script is run as follows:
+
 `CloneRow.py example_one example_two my_table my_column my_filter`
+
 The equivalent in 'sql':
 ```sql
 select
