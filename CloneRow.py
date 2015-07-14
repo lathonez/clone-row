@@ -7,10 +7,9 @@ from DictDiffer import DictDiffer
 
 class CloneRow(object):
     """ CloneRow constructor """
-    # TODO:
-    #   - README.md
 
     def __init__(self):
+        # make sure the config file has correct permissions (0600)
         self._check_config_chmod()
         coloredlogs.install(show_hostname=False, show_name=False, show_severity=False)
         logging.info('Reading configuration..')
@@ -485,7 +484,6 @@ class CloneRow(object):
             other_db = self.target['alias'] if mode == 'source' else self.source['alias']
             con = self.source['connection'] \
                 if working_db == self.source['alias'] else self.target['connection']
-
             for column in deltas:
                 logging.info('')
                 logging.info(self._get_log_break('|Schema Change - Column: {0}|'.format(column)))
@@ -506,7 +504,6 @@ class CloneRow(object):
                 logging.warning('    ' + info['drop_sql'])
                 logging.info(self._get_log_break())
                 logging.info('')
-
         if self.config.getboolean('clone_row', 'schema_only'):
             # we're done if only diffing schema
             self.exit()
@@ -565,8 +562,6 @@ class CloneRow(object):
 #   https://en.wikipedia.org/wiki/Dolly_(sheep)
 #
 DOLLY = CloneRow()
-# make sure the config file has correct permissions (0600)
-
 # parse command line arguments from the user
 DOLLY.parse_cla()
 # establish a connection to source and target databases

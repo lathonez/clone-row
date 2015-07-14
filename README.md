@@ -1,7 +1,22 @@
 # mysql-clone-row
-Python utility to clone a row in mysql, from a target to source database, field by field
+Clone a row from one mysql database to another
 
+## Features
+* Ignore schema differences, common columns will always be cloned regardless of various other columns that are missing from target or source
+* Hint at schema updates required, providing SQL to bring source table in line with target, or vice versa
+* Fail-safe operation, with automated and manual rollback procedures provided
+* Checkpoint so you can check the target system before 'committing' the changes
+* Ignore columns you never want to update (typically serials)
+* Setup database aliases for ease of use (e.g. local, dev, test, integration, prod)
 
+## There are things that do this already!
+There are many industry standard tools that could (and should) be used instead of mysql-clone-row, if applicable. Examples include [mysqldump](https://dev.mysql.com/doc/refman/5.1/en/mysqldump.html), [replication](https://dev.mysql.com/doc/refman/5.0/en/replication.html) and simply [select into outfile](https://dev.mysql.com/doc/refman/5.1/en/select-into.html).
+However, I have found that there are usecases for this application:
+* Many databases containing rich data which is modified little and often
+* Wide tables with multiple changes that are hard to keep track of during the release cycle
+* No version control for data (or data insertion scripts), making changes hard to audit
+* No replication solution or budget for installing one
+* No CMS for making simple changes to data rows across multiple databases
 
 ## Configuration
 * The config file CloneRow.cfg needs to have 0600 permissions as it may contain mysql passwords
@@ -46,7 +61,7 @@ export PATH=$PATH:/path/to/mysql-clone-row
 Common issues and remedies during installation
 ####mysql-python install failing
 
-```shell
+```
 sudo pip install -r mysql-clone-row/requirements.txt
 ...
 Traceback (most recent call last):
@@ -78,8 +93,8 @@ If you see the above error, try installing libmysqlclient:
 
 ####bad interpreter
 
-```shell
-dev:~/mysql-clone-row$ ./CloneRow.py
+```
+$ ./CloneRow.py
 -bash: ./CloneRow.py: /usr/local/bin/python: bad interpreter: No such file or directory
 ```
 
@@ -98,8 +113,10 @@ or just run the script as `python CloneRow.py`
 ## Creating a tunnel to mysql
 Sometimes you may not have direct access to the mysql database (e.g. the port is not exposed). To get around this you can use an ssh tunnel, if you have ssh access to the box:
 
-```shell
-    ssh -L 33306:localhost:3306 my.mysql.server
-```
+`ssh -L 33306:localhost:3306 my.mysql.server`
 
 You can now access the server on my.mysql.server on localhost port 33306.
+
+##Credits
+* [mysql-python](http://mysql-python.sourceforge.net/MySQLdb.html)
+* [DictDiffer](https://github.com/hughdbrown/dictdiffer)
