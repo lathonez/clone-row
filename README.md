@@ -143,7 +143,7 @@ If you see the above error, try installing libmysqlclient:
 
 `sudo apt-get install libmysqlclient-dev`
 
-###mysql-python install failing again
+####mysql-python install failing again
 ```
 x86_64-linux-gnu-gcc -pthread -fno-strict-aliasing -DNDEBUG -g -fwrapv -O2 -Wall -Wstrict-prototypes -fPIC -Dversion_info=(1,2,5,'final',1) -D__version__=1.2.5 -I/usr/include/mysql -I/usr/include/python2.7 -c _mysql.c -o build/temp.linux-x86_64-2.7/_mysql.o -DBIG_JOINS=1 -fno-strict-aliasing -g -DNDEBUG
 
