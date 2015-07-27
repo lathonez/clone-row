@@ -78,7 +78,7 @@ class CloneRow(object):
         except MySQLdb.OperationalError, mysqlex:
             if password is not None:
                 # don't want to be logging out passwords really, use * instead
-                password = '*' * len(password)
+                con_args['passwd'] = '*' * len(con_args['passwd'])
             logging.error('Failed to connect to database %s with credentials:', host_alias)
             for key, val in con_args.iteritems():
                 logging.error('  %s: %s', key, val)
@@ -457,7 +457,7 @@ class CloneRow(object):
         ))
         restore_sql.append('    commit;')
         logging.info('')
-        logging.info(self._get_log_break('Manual Rollback Steps'))
+        logging.info(self._get_log_break('|Manual Rollback Steps|'))
         logging.info('  To rollback manually, run the following sql on %s', self.target['alias'])
         for line in restore_sql:
             logging.warning(line)
