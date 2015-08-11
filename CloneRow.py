@@ -127,7 +127,7 @@ class CloneRow(object):
             )
             logging.info(
                 'To change encoding on %s to %s:%s run the following sql on %s',
-                self.source['alias'],
+                self.target['alias'],
                 target_enc['character_set_name'],
                 target_enc['collation_name'],
                 self.source['alias']
