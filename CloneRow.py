@@ -90,6 +90,57 @@ class CloneRow(object):
         )
         return con
 
+    def _check_encoding(self):
+        """
+        the encoding should match for source and target tables
+        if it doesn't, error out and warn the user
+        """
+        logging.info('checking encoding..')
+        source_enc = self._get_encoding(self.source)
+        target_enc = self._get_encoding(self.target)
+        logging.info(
+            'source encoding %s:%s',
+            source_enc['character_set_name'],
+            source_enc['collation_name']
+        )
+        logging.info(
+            'target encoding %s:%s',
+            target_enc['character_set_name'],
+            target_enc['collation_name']
+        )
+
+        if set(source_enc.values()) - set(target_enc.values()):
+            logging.error('FATAL - encoding mismatch')
+            logging.info(self._get_log_break('|encoding changes|'))
+            logging.info(
+                'To change encoding on %s to %s:%s run the following sql on %s',
+                self.source['alias'],
+                source_enc['character_set_name'],
+                source_enc['collation_name'],
+                self.source['alias']
+            )
+            logging.warning(
+                '  alter table %s convert to character set %s collate %s;',
+                self.database['table'],
+                source_enc['character_set_name'],
+                source_enc['collation_name']
+            )
+            logging.info(
+                'To change encoding on %s to %s:%s run the following sql on %s',
+                self.source['alias'],
+                target_enc['character_set_name'],
+                target_enc['collation_name'],
+                self.source['alias']
+            )
+            logging.warning(
+                '  alter table %s convert to character set %s collate %s;',
+                self.database['table'],
+                target_enc['character_set_name'],
+                target_enc['collation_name']
+            )
+            logging.info(self._get_log_break())
+            self._error('Fix the encoding mismatch and re-run')
+
     def _dump_update_sql(self, cursor):
         """
         dump the last executed update statement to a file
@@ -150,6 +201,36 @@ class CloneRow(object):
             'add_sql': add_sql,
             'drop_sql': drop_sql
         }
+
+    def _get_encoding(self, host):
+        """
+        return character set and collation for the table we're working on
+        """
+        sql = """select
+                ccsa.character_set_name,
+                ccsa.collation_name
+            from
+                information_schema.tables t,
+                information_schema.collation_character_set_applicability ccsa
+            where
+                ccsa.collation_name = t.table_collation and
+                t.table_schema = '{0}' and
+                t.table_name = '{1}';
+            """
+        sql = sql.format(
+            self.config.get('host.' + host['alias'], 'database'),
+            self.database['table']
+        )
+        host['connection'].query(sql)
+        res = host['connection'].store_result()
+        # we should only _ever_ be playing with one row, per host, at a time
+        if res.num_rows() == 0:
+            # this is an error case on the source database, will be dealt with later
+            self._error('_check_encoding: failed to find encoding for ' + host['alias'])
+        if res.num_rows() != 1:
+            self._error('_check_encoding: Only one row expected')
+        row = res.fetch_row(how=1)
+        return dict(row[0])
 
     @classmethod
     def _get_log_break(cls, string=''):
@@ -471,6 +552,8 @@ class CloneRow(object):
         self.target['connection'] = self._connect(self.target['alias'])
         # we don't want mysql commit stuff unless we've okay'd it
         self.target['connection'].autocommit(False)
+        # make sure the encoding is all good
+        self._check_encoding()
 
     def show_schema_updates(self):
         """ display SQL statements to adjust database for schema differences on this table """
