@@ -5,7 +5,8 @@ Clone a row from one mysql database to another
 * Ignore schema differences, common columns will be cloned regardless of definitions that are missing from target or source databases
 * Fail-safe operation, with automated and manual rollback procedures provided
 * Checkpointing, so you can check the target system before 'committing' the changes
-* Hint at schema updates required, providing SQL to bring source table in line with target, or vice versa
+* Check that the encoding of source and target databases matches
+* Hint at schema (and encoding) updates required, providing SQL to bring source table in line with target, or vice versa
 * Ignore columns you never want to update (typically serials)
 * Setup database aliases for ease of use (e.g. local, dev, test, integration, prod)
 
