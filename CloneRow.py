@@ -3,6 +3,7 @@
 
 import argparse, coloredlogs, ConfigParser, datetime
 import logging, MySQLdb, os, stat, sys, time, traceback
+from subprocess import Popen, PIPE
 from DictDiffer import DictDiffer
 
 class CloneRow(object):
@@ -23,16 +24,17 @@ class CloneRow(object):
             sys.exit(1)
         self.source = {
             'alias': None,
-            'print_alias': None,
             'connection': None,
+            'db_name': None,
             'row': None
         }
         self.target = {
             'alias': None,
-            'print_alias': None,
+            'backup': None,
             'connection': None,
+            'db_name': None,
+            'new_insert': False,
             'row': None,
-            'backup': None
         }
         self.database = {
             'table': None,
@@ -41,7 +43,6 @@ class CloneRow(object):
             'ignore_columns': [],
             'deltas': None
         }
-        self.target_insert = False
 
     #
     # PRIVATE methods
@@ -385,19 +386,19 @@ class CloneRow(object):
             cur.close()
             self.target['connection'].rollback()
             self._error('restore_target: expected to delete only one row')
-        if self.target_insert:
+        if self.target['new_insert']:
             logging.warning('deleting (not restoring) as target row was inserted from scratch')
             # there was no row here when we started the script, so we just need to
             # delete what was inserted (done above)
             cur.close()
             self.target['connection'].commit()
             return
-        # if we've got this far we do need to restore something from the backup file
-        restore_sql = 'load data infile \'{0}\' into table {1}'.format(
-            self.target['backup'],
-            self.database['table']
-        )
-        cur.execute(restore_sql)
+        for line in open(self.target['backup']):
+            # only run the insert:
+            #   - ignore locks (only one row)
+            #   - ignore encoding (handled herein separately)
+            if line.find('INSERT') == 0:
+                cur.execute(line)
         if self.target['connection'].affected_rows() != 1:
             cur.close()
             self.target['connection'].rollback()
@@ -408,16 +409,48 @@ class CloneRow(object):
     def _unload_target(self):
         """ unload the row we're working on from the target database for backup purposes """
         logging.info('backing up target row..')
-        cur = self.target['connection'].cursor()
         unload_file = self.config.get('clone_row', 'unload_filepath') + '.backup'
-        cur.execute('select * into outfile \'{0}\' from {1} where {2} = %s'.format(
-            unload_file,
+        error_log = '/tmp/mysqldump.error'
+        target_alias = self.target['alias']
+        password = self.config.get('host.' + target_alias, 'password')
+
+        args = [
+            'mysqldump',
+            '--host',
+            self.config.get('host.' + target_alias, 'hostname'),
+            '--user',
+            self.config.get('host.' + target_alias, 'username'),
+            '--port',
+            self.config.get('host.' + target_alias, 'port'),
+            '--no-create-info',
+            '--databases',
+            self.target['db_name'],
+            '--tables',
             self.database['table'],
-            self.database['column']
-        ), (self.database['filter'], ))
-        if self.target['connection'].affected_rows() != 1:
-            self._error('unload_target: unable to verify unload file')
+            '--where',
+            '{0} = \'{1}\''.format(self.database['column'], self.database['filter'])
+        ]
+
+        if password is not None:
+            args.append('-p' + password)
+
+        # do the mysql dump and pipe it through James Mishra's mysqldump_to_csv
+        # so we can use it to insert later if restoring from backup
+        with open(unload_file, 'wb', 0) as outfile, open(error_log, 'wb', 0) as errfile:
+            mysqldump_process = Popen(args, stdout=outfile, stderr=errfile)
+        ret = mysqldump_process.wait()
+
+        if ret > 0:
+            logging.error('an issue occurred running mysqldump, see ' + errfile)
+            self._error('mysqldump exited with non zero error code of ' + str(ret))
+
+        # do some basic sanity checking - we should only have one INSERT line
+        num_lines = sum(1 for line in open(unload_file) if line.find('INSERT') == 0)
+
+        if num_lines != 1:
+            self._error('unload_target: unable to verify unload file ' + unload_file)
         logging.warning('backup file can be found at %s on %s', unload_file, self.target['alias'])
+
         return unload_file
 
     #
@@ -471,6 +504,7 @@ class CloneRow(object):
             self._error('somehow we\'ve inserted multiple rows')
         # now we have a row, we can return it as usual
         self.target['row'] = self._get_row(self.target)
+        self.target['new_insert'] = True
 
     def parse_cla(self):
         """ parse command line arguments and setup config based on them """
@@ -515,6 +549,8 @@ class CloneRow(object):
         self.target['alias'] = args.target_alias
         if self.source['alias'] == self.target['alias']:
             self._error('source and target alias are identical')
+        self.source['db_name'] = self.config.get('host.' + args.source_alias, 'database')
+        self.target['db_name'] = self.config.get('host.' + args.target_alias, 'database')
         self.database['table'] = args.table
         self.database['column'] = args.column
         self.database['filter'] = args.filter
@@ -526,20 +562,28 @@ class CloneRow(object):
 
     def print_restore_sql(self):
         """ provide sql steps to rollback by hand after script has run """
-        restore_sql = ['    begin;']
+        target_alias = self.target['alias']
+        restore_sql = [
+            '  mysql -h {0} -P {1} -u {2} -p {3}'.format(
+                self.config.get('host.' + target_alias, 'hostname'),
+                self.config.get('host.' + target_alias, 'port'),
+                self.config.get('host.' + target_alias, 'username'),
+                self.target['db_name']
+            )
+        ]
+        restore_sql.append('    begin;')
         restore_sql.append('    delete from {0} where {1} = {2};'.format(
             self.database['table'],
             self.database['column'],
             self._quote_sql_param(self.database['filter'])
         ))
         restore_sql.append('    -- if more than one row has been deleted above run `rollback;`')
-        restore_sql.append('    load data infile \'{0}\' into table {1};'.format(
-            self.target['backup'], self.database['table']
-        ))
+        if not self.target['new_insert']:
+            restore_sql.append('    source ' + self.target['backup'])
         restore_sql.append('    commit;')
         logging.info('')
         logging.info(self._get_log_break('|Manual Rollback Steps|'))
-        logging.info('  To rollback manually, run the following sql on %s', self.target['alias'])
+        logging.info('  To rollback manually, run the following steps on this machine')
         for line in restore_sql:
             logging.warning(line)
         logging.info(self._get_log_break())
@@ -598,7 +642,10 @@ class CloneRow(object):
             logging.warning('all changes are configured to be ignored, nothing to do..')
             self.exit()
         self._print_delta_columns(delta_columns)
-        self.target['backup'] = self._unload_target()
+        if not self.target['new_insert']:
+            self.target['backup'] = self._unload_target()
+        else:
+            logging.info('not backing up target on new insert..')
         cur = self.target['connection'].cursor()
         update_sql = None
         update_params = []
