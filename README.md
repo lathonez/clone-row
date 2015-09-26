@@ -102,13 +102,13 @@ If you want to just show schema differences between the two databases on a singl
 This saves you having to find a column filter if you just want to work out the schema updates
 
 ## Exit Codes
-0: successfully executed
-1: CloneRow.py encountered an error during operation, there should be an error message and stack trace printed
-2: Invalid arguments supplied (check the error message)
-3: CloneRow.cfg is not configured correctly
-4: CloneRow.cfg is not secure (chmod 0600)
-5: No rows were updated (e.g. all target and source data was identical)
-6: There were changes but CloneRow.cfg has been configured such that they were ignored (e.g. table.my_table ignore_columns)
+- 0: successfully executed
+- 1: CloneRow.py encountered an error during operation, there should be an error message and stack trace printed
+- 2: Invalid arguments supplied (check the error message)
+- 3: CloneRow.cfg is not configured correctly
+- 4: CloneRow.cfg is not secure (chmod 0600)
+- 5: No rows were updated (e.g. all target and source data was identical)
+- 6: There were changes but CloneRow.cfg has been configured such that they were ignored (e.g. table.my_table ignore_columns)
 
 ## Installation
 ```
