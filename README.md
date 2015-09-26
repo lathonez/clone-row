@@ -76,6 +76,9 @@ password: example_two_pass
 hostname: two.example.com
 port: 3306
 database: example_two_db
+
+[table.my_table]
+ignore_columns: id,lastUpdated
 ```
 If the script is run as follows, `example_one` is the source and `example_two` is the target:
 
@@ -84,7 +87,7 @@ If the script is run as follows, `example_one` is the source and `example_two` i
 The equivalent in 'sql':
 ```sql
 select
-    *
+    * -- (everything apart from id and created at, which are ignored by the ignore_columns config for my_table)
 into
     example_two.my_table
 from
@@ -97,6 +100,15 @@ If you want to just show schema differences between the two databases on a singl
 `CloneRow.py --schema_only example_one example_two my_table`
 
 This saves you having to find a column filter if you just want to work out the schema updates
+
+## Exit Codes
+0: successfully executed
+1: CloneRow.py encountered an error during operation, there should be an error message and stack trace printed
+2: Invalid arguments supplied (check the error message)
+3: CloneRow.cfg is not configured correctly
+4: CloneRow.cfg is not secure (chmod 0600)
+5: No rows were updated (e.g. all target and source data was identical)
+6: There were changes but CloneRow.cfg has been configured such that they were ignored (e.g. table.my_table ignore_columns)
 
 ## Installation
 ```

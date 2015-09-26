@@ -21,7 +21,7 @@ class CloneRow(object):
             logging.error('You have not setup a CloneRow.cfg file for your requirements')
             logging.info('take a look at CloneRow.example.cfg')
             logging.info('https://github.com/lathonez/mysql-clone-row#configuration')
-            sys.exit(1)
+            sys.exit(3)
         self.source = {
             'alias': None,
             'connection': None,
@@ -55,7 +55,7 @@ class CloneRow(object):
         chmod = oct(stat.S_IMODE(os.stat(cfg_path).st_mode))
         if chmod != '0600':
             logging.error('CloneRow.cfg needs to be secure: `chmod 0600 CloneRow.cfg`')
-            sys.exit(1)
+            sys.exit(4)
 
     def _connect(self, host_alias):
         """
@@ -457,11 +457,11 @@ class CloneRow(object):
     # PUBLIC methods
     #
 
-    def exit(self):
+    def exit(self, code=0):
         """ wrapper for exiting the script successfully """
         logging.info('operation completed successfully, have a fantastic day')
         self._housekeep()
-        sys.exit(0)
+        sys.exit(code)
 
     def find_deltas(self):
         """ use DictDiffer to find differences between target and source databases """
@@ -550,7 +550,7 @@ class CloneRow(object):
             print '\n', \
                 'column & filter arguments must be supplied unless running with --schema_only/-s\n'
             parser.print_help()
-            sys.exit(0)
+            sys.exit(2)
         self.source['alias'] = args.source_alias
         self.target['alias'] = args.target_alias
         if self.source['alias'] == self.target['alias']:
@@ -643,11 +643,11 @@ class CloneRow(object):
         delta_columns = self.database['deltas']['delta_columns']
         if not len(delta_columns):
             logging.warning('data is identical in target and source, nothing to do..')
-            self.exit()
+            self.exit(5)
         if set(delta_columns). \
             issubset(set(self.database['ignore_columns'])):
             logging.warning('all changes are configured to be ignored, nothing to do..')
-            self.exit()
+            self.exit(6)
         self._print_delta_columns(delta_columns)
         if not self.target['new_insert']:
             self.target['backup'] = self._unload_target()
