@@ -34,7 +34,7 @@ class CloneRow(object):
             'connection': None,
             'db_name': None,
             'new_insert': False,
-            'row': None,
+            'row': None
         }
         self.database = {
             'table': None,
@@ -522,6 +522,12 @@ class CloneRow(object):
             default='/tmp'
         )
         parser.add_argument(
+            '--feeling_lucky', '-f',
+            action='store_true',
+            help='do not prompt the user to restore, backup SQL will still be logged',
+            default=False
+        )
+        parser.add_argument(
             'source_alias',
             help='source host alias (for host.* config section)',
             choices=[alias[5:] for alias in aliases]
@@ -559,6 +565,7 @@ class CloneRow(object):
         self.config.set('clone_row', 'unload_dir', args.unload_dir)
         self.config.set('clone_row', 'unload_filepath', self._get_unload_filepath())
         self.config.set('clone_row', 'schema_only', str(args.schema_only))
+        self.config.set('clone_row', 'feeling_lucky', str(args.feeling_lucky))
 
     def print_restore_sql(self):
         """ provide sql steps to rollback by hand after script has run """
@@ -675,6 +682,9 @@ class CloneRow(object):
     def user_happy(self):
         """ Give the user a chance to restore from backup automatically beforer we terminate """
         logging.info('Row has been cloned successfully..')
+        if self.config.getboolean('clone_row', 'feeling_lucky'):
+            logging.warning('Not prompting to restore from backup as you\'re felling lucky today')
+            return True
         logging.warning('Type \'r\' to (r)estore from backup, anything else to exit')
         descision = raw_input()
         if descision == 'r':

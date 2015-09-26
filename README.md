@@ -39,22 +39,25 @@ database: example_one_db
 
 ```
 usage: CloneRow.py [-h] [--schema_only] [--unload_dir UNLOAD_DIR]
-                   {example_one,example_two} {example_one,example_two} table
-                   [column] [filter]
+                   [--feeling_lucky]
+                   {example_one,example_two,example_nopass,example_one_tunnelled}
+                   {example_one,example_two,example_nopass,example_one_tunnelled}
+                   table [column] [filter]
 
 positional arguments:
   {example_one,example_two}  source host alias (for host.* config section)
   {example_one,example_two}  target host alias (for host.* section)
-  table                      table to consider
-  column                     column to consider
-  filter                     value to filter column (where column = filter)
+  table                      table to consider: select from <table>
+  column                     column to consider (default: None)
+  filter                     value to filter column: where column = <filter> (default: None)
 
 optional arguments:
   -h, --help                 show this help message and exit
   --schema_only, -s          diff schema only, do not consider data (column and
                              filter not required) (default: False)
-  --unload_dir UNLOAD_DIR,   directory to unload backups and update sql dumps to
-  -u UNLOAD_DIR              (default: /tmp)
+  --unload_dir UNLOAD_DIR, -u UNLOAD_DIR
+                             directory to unload backups and update sql dumps to (default: /tmp)
+  --feeling_lucky, -f        do not prompt the user to restore, backup SQL will still be logged (default: False)
 ```
 
 ## Usage example
