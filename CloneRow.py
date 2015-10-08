@@ -481,6 +481,8 @@ class CloneRow(object):
         # we really need a source row..
         if self.source['row'] is None:
             self._error('get_rows: no row found in {0} database'.format(self.source['alias']))
+        # make sure the encoding is all good
+        self._check_encoding()
 
     def insert_target(self):
         """
@@ -603,8 +605,6 @@ class CloneRow(object):
         self.target['connection'] = self._connect(self.target['alias'])
         # we don't want mysql commit stuff unless we've okay'd it
         self.target['connection'].autocommit(False)
-        # make sure the encoding is all good
-        self._check_encoding()
 
     def show_schema_updates(self):
         """ display SQL statements to adjust database for schema differences on this table """
