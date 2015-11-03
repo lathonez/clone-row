@@ -2,8 +2,8 @@
 """ Python module for cloning a MYSQL row from one host to another """
 
 import argparse, coloredlogs, ConfigParser, datetime
-import logging, MySQLdb, os, stat, sys, time, traceback
-from subprocess import Popen, PIPE
+import logging, MySQLdb, os, paramiko, stat, sys, time, traceback
+from subprocess import Popen
 from DictDiffer import DictDiffer
 
 class CloneRow(object):
@@ -156,6 +156,12 @@ class CloneRow(object):
         with open(sql_file, "w") as outfile:
             outfile.write(sql)
         logging.warning('update sql is available for inspection at %s on this machine', sql_file)
+        if self.config.has_section('transaction_log'):
+            self._scp_file(
+                self.config.get('transaction_log', 'hostname'),
+                self.config.get('transaction_log', 'directory'),
+                sql_file
+            )
 
     def _error(self, message=None, exception=None):
         """
@@ -406,6 +412,25 @@ class CloneRow(object):
         cur.close()
         self.target['connection'].commit()
 
+    @classmethod
+    def _scp_file(cls, host, directory, filepath):
+        """
+        copy a local file to a remote hostname
+
+        Keyword arguments:
+        host: hostname of remote machine
+        directory: diretory on remote machine
+        filepath: path to local file
+        """
+        logging.info('scp\'ing ' + filepath + ' to ' + host + ':' + directory)
+        ssh = paramiko.SSHClient()
+        ssh.load_host_keys(os.path.expanduser(os.path.join("~", ".ssh", "known_hosts")))
+        ssh.connect(host)
+        sftp = ssh.open_sftp()
+        sftp.put(filepath, os.path.join(directory, os.path.basename(filepath)))
+        sftp.close()
+        ssh.close()
+
     def _unload_target(self):
         """ unload the row we're working on from the target database for backup purposes """
         logging.info('backing up target row..')
@@ -451,6 +476,13 @@ class CloneRow(object):
             self._error('unload_target: unable to verify unload file ' + unload_file)
         logging.warning('backup file can be found at %s on %s', unload_file, self.target['alias'])
 
+        # upload the backup file to transactional log store if applicable
+        if self.config.has_section('transaction_log'):
+            self._scp_file(
+                self.config.get('transaction_log', 'hostname'),
+                self.config.get('transaction_log', 'directory'),
+                unload_file
+            )
         return unload_file
 
     #

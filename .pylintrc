@@ -1,2 +1,2 @@
 [BASIC]
-ignored-classes=Connection,DictDiffer,MySQLdb
+ignored-classes=Connection,DictDiffer,MySQLdb,parakimo

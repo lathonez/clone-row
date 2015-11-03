@@ -7,6 +7,7 @@ Clone a row from one mysql database to another
 * Checkpointing, so you can check the target system before 'committing' the changes
 * Check that the encoding of source and target databases matches
 * Hint at schema (and encoding) updates required, providing SQL to bring source table in line with target, or vice versa
+* Copy "transaction logs" (backups and update statements) to a remote log server as part of deployment. Handy if you have multiple developers releasing data updates from thier own machines and you need to keep an audit
 * Ignore columns you never want to update (typically serials)
 * Setup database aliases for ease of use (e.g. local, dev, test, integration, prod)
 
@@ -87,7 +88,7 @@ If the script is run as follows, `example_one` is the source and `example_two` i
 The equivalent in 'sql':
 ```sql
 select
-    * -- (everything apart from id and created at, which are ignored by the ignore_columns config for my_table)
+    * -- (everything apart from id and lastUpdated, which are ignored by the ignore_columns config for my_table)
 into
     example_two.my_table
 from
