@@ -437,12 +437,16 @@ class CloneRow(object):
         cfg = {'hostname': host}
 
         user_config = ssh_config.lookup(cfg['hostname'])
-        for k in ('hostname', 'username', 'port'):
+        for k in ('hostname', 'identityfile', 'port', 'proxycommand' 'username'):
             if k in user_config:
-                cfg[k] = user_config[k]
-
-        if 'proxycommand' in user_config:
-            cfg['sock'] = paramiko.ProxyCommand(user_config['proxycommand'])
+                if k == 'port':
+                    cfg[k] = int(user_config[k])
+                elif k == 'identityfile':
+                    cfg['key_filename'] = user_config[k]
+                elif k == 'proxycommand':
+                    cfg['sock'] = paramiko.ProxyCommand(user_config[k])
+                else:
+                    cfg[k] = user_config[k]
 
         ssh.connect(**cfg)
         sftp = ssh.open_sftp()
