@@ -438,12 +438,14 @@ class CloneRow(object):
         connect_options = {'hostname': host}
 
         for key in ssh_config:
-            if key == 'port':
-                connect_options[key] = int(ssh_config[key])
-            elif key == 'identityfile':
+            if key == 'identityfile':
                 connect_options['key_filename'] = ssh_config[key]
+            elif key == 'port':
+                connect_options[key] = int(ssh_config[key])
             elif key == 'proxycommand':
                 connect_options['sock'] = paramiko.ProxyCommand(ssh_config[key])
+            elif key == 'user':
+                connect_options['username'] = ssh_config[key]
             else:
                 connect_options[key] = ssh_config[key]
 
