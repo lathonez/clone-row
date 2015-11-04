@@ -202,3 +202,4 @@ or just run the script as `python CloneRow.py`
 ##Credits
 * [mysql-python](http://mysql-python.sourceforge.net/MySQLdb.html)
 * [DictDiffer](https://github.com/hughdbrown/dictdiffer)
+* [Connecting with paramiko using the user's OpenSSH config](https://gist.github.com/acdha/6064215)

@@ -425,8 +425,26 @@ class CloneRow(object):
         """
         logging.info('scp\'ing ' + filepath + ' to ' + host + ':' + directory)
         ssh = paramiko.SSHClient()
-        ssh.load_host_keys(os.path.expanduser(os.path.join("~", ".ssh", "known_hosts")))
-        ssh.connect(host)
+        ssh.load_host_keys(os.path.expanduser(os.path.join('~', '.ssh', 'known_hosts')))
+
+        ssh_config = paramiko.SSHConfig()
+        user_config_file = os.path.expanduser('~/.ssh/config')
+        if os.path.exists(user_config_file):
+            with open(user_config_file) as config_file:
+                ssh_config.parse(config_file)
+
+        # https://gist.github.com/acdha/6064215
+        cfg = {'hostname': host}
+
+        user_config = ssh_config.lookup(cfg['hostname'])
+        for k in ('hostname', 'username', 'port'):
+            if k in user_config:
+                cfg[k] = user_config[k]
+
+        if 'proxycommand' in user_config:
+            cfg['sock'] = paramiko.ProxyCommand(user_config['proxycommand'])
+
+        ssh.connect(**cfg)
         sftp = ssh.open_sftp()
         sftp.put(filepath, os.path.join(directory, os.path.basename(filepath)))
         sftp.close()
