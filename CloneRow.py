@@ -426,29 +426,28 @@ class CloneRow(object):
         logging.info('scp\'ing ' + filepath + ' to ' + host + ':' + directory)
         ssh = paramiko.SSHClient()
         ssh.load_host_keys(os.path.expanduser(os.path.join('~', '.ssh', 'known_hosts')))
+        ssh_config_path = os.path.expanduser(os.path.join('~', '.ssh', 'config'))
 
-        ssh_config = paramiko.SSHConfig()
-        user_config_file = os.path.expanduser('~/.ssh/config')
-        if os.path.exists(user_config_file):
-            with open(user_config_file) as config_file:
-                ssh_config.parse(config_file)
+        if os.path.exists(ssh_config_path):
+            config = paramiko.SSHConfig()
+            config.parse(open(ssh_config_path))
+            ssh_config = config.lookup(host)
+        else:
+            ssh_config = []
 
-        # https://gist.github.com/acdha/6064215
-        cfg = {'hostname': host}
+        connect_options = {'hostname': host}
 
-        user_config = ssh_config.lookup(cfg['hostname'])
-        for k in ('hostname', 'identityfile', 'port', 'proxycommand' 'username'):
-            if k in user_config:
-                if k == 'port':
-                    cfg[k] = int(user_config[k])
-                elif k == 'identityfile':
-                    cfg['key_filename'] = user_config[k]
-                elif k == 'proxycommand':
-                    cfg['sock'] = paramiko.ProxyCommand(user_config[k])
-                else:
-                    cfg[k] = user_config[k]
+        for key in ssh_config:
+            if key == 'port':
+                connect_options[key] = int(ssh_config[key])
+            elif key == 'identityfile':
+                connect_options['key_filename'] = ssh_config[key]
+            elif key == 'proxycommand':
+                connect_options['sock'] = paramiko.ProxyCommand(ssh_config[key])
+            else:
+                connect_options[key] = ssh_config[key]
 
-        ssh.connect(**cfg)
+        ssh.connect(**connect_options)
         sftp = ssh.open_sftp()
         sftp.put(filepath, os.path.join(directory, os.path.basename(filepath)))
         sftp.close()
