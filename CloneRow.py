@@ -156,7 +156,8 @@ class CloneRow(object):
         with open(sql_file, "w") as outfile:
             outfile.write(sql)
         logging.warning('update sql is available for inspection at %s on this machine', sql_file)
-        if self.config.has_section('transaction_log'):
+        if (self.config.has_section('transaction_log') and
+                self.target['alias'] in self.config.get('transaction_log', 'targets').split(',')):
             self._scp_file(
                 self.config.get('transaction_log', 'hostname'),
                 self.config.get('transaction_log', 'directory'),
@@ -456,7 +457,7 @@ class CloneRow(object):
             '{0} = \'{1}\''.format(self.database['column'], self.database['filter'])
         ]
 
-        if password is not None:
+        if password is not None and password != '':
             args.append('-p' + password)
 
         # do the mysql dump and pipe it through James Mishra's mysqldump_to_csv
@@ -477,7 +478,8 @@ class CloneRow(object):
         logging.warning('backup file can be found at %s on %s', unload_file, self.target['alias'])
 
         # upload the backup file to transactional log store if applicable
-        if self.config.has_section('transaction_log'):
+        if (self.config.has_section('transaction_log') and
+                self.target['alias'] in self.config.get('transaction_log', 'targets').split(',')):
             self._scp_file(
                 self.config.get('transaction_log', 'hostname'),
                 self.config.get('transaction_log', 'directory'),
