@@ -425,6 +425,7 @@ class CloneRow(object):
         """
         logging.info('scp\'ing ' + filepath + ' to ' + host + ':' + directory)
         ssh = paramiko.SSHClient()
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         ssh.load_host_keys(os.path.expanduser(os.path.join('~', '.ssh', 'known_hosts')))
         ssh_config_path = os.path.expanduser(os.path.join('~', '.ssh', 'config'))
 
