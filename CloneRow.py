@@ -1,5 +1,5 @@
 #! /usr/bin/python
-""" Python module for cloning a MYSQL row from one host to another """
+""" Python module for cloning a row from one database to another """
 
 # standard imports
 from subprocess import Popen
@@ -72,7 +72,7 @@ class CloneRow(object):
 
     def _connect(self, host_alias):
         """
-        connect to a mysql database, returning a MySQLdb.Connection object
+        connect to a database, returning a PDBC object
 
         Keyword arguments:
         host_alias -- the configured alias of the host we're connecting to
@@ -80,12 +80,13 @@ class CloneRow(object):
         """
         logging.info('attempting to connect to %s..', host_alias)
         con_args = {}
+        driver = self.config.get('host.' + host_alias, 'driver')
         con_args['host'] = self.config.get('host.' + host_alias, 'hostname')
         con_args['user'] = self.config.get('host.' + host_alias, 'username')
         con_args['port'] = self.config.getint('host.' + host_alias, 'port')
         con_args['db'] = self.config.get('host.' + host_alias, 'database')
         password = self.config.get('host.' + host_alias, 'password')
-        pdbc = PDBC('mysql')
+        pdbc = PDBC(driver)
         exception = pdbc.get_exception_class('OperationalError')
         if password is not None:
             con_args['passwd'] = password
