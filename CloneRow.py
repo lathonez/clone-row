@@ -15,9 +15,9 @@ import traceback
 # external imports
 import argparse
 import coloredlogs
-import MySQLdb
 import paramiko
 from DictDiffer import DictDiffer
+from PDBC import PDBC
 
 class CloneRow(object):
     """ CloneRow constructor """
@@ -85,24 +85,26 @@ class CloneRow(object):
         con_args['port'] = self.config.getint('host.' + host_alias, 'port')
         con_args['db'] = self.config.get('host.' + host_alias, 'database')
         password = self.config.get('host.' + host_alias, 'password')
+        pdbc = PDBC('mysql')
+        exception = pdbc.get_exception_class('OperationalError')
         if password is not None:
             con_args['passwd'] = password
         try:
-            con = MySQLdb.connect(**con_args)
-        except MySQLdb.OperationalError, mysqlex:
+            pdbc.connect(con_args)
+        except exception as sqlex:
             if password is not None:
                 # don't want to be logging out passwords really, use * instead
                 con_args['passwd'] = '*' * len(con_args['passwd'])
             logging.error('Failed to connect to database %s with credentials:', host_alias)
             for key, val in con_args.iteritems():
                 logging.error('  %s: %s', key, val)
-            self._error(exception=mysqlex)
-        version = con.get_server_info()
+            self._error(exception=sqlex)
         logging.info(
             'connected to %s@%s:%s - Database version : %s',
-            con_args['user'], host_alias, con_args['db'], version
+            con_args['user'], host_alias, con_args['db'], pdbc.get_server_info()
         )
-        return con
+
+        return pdbc
 
     def _check_encoding(self):
         """
@@ -194,56 +196,14 @@ class CloneRow(object):
             traceback.print_exc()
         sys.exit(1)
 
-    def _get_column_sql(self, con, column):
-        """
-        return sql to add or drop a given column from the table passed in on the command line
-
-        Keyword arguments:
-        con -- MySQLdb.connection object of the database we're using (source or target)
-        column -- the column to return sql for
-        """
-        drop_sql = 'alter table `{0}` drop column `{1}`;'.format(self.database['table'], column)
-        # using con.query instead of con.cursor.execute gives us a nicer return format
-        con.query('show fields from {0} where field = \'{1}\''.format(
-            self.database['table'],
-            column
-        ))
-        res = con.store_result()
-        if res.num_rows() != 1:
-            self._error('get_column_sql: only one row expected!')
-        # using how=1 and parsing into a dict lets us manipulate with the returned data easily
-        column_info = dict(res.fetch_row(how=1)[0])
-        not_null = '' if column_info['Null'] == 'YES' else ' not null'
-        default = '' if column_info['Default'] is None else ' default ' + column_info['Default']
-        add_sql = 'alter table `{0}` add column `{1}` {2}{3}{4};'.format(
-            self.database['table'], column, column_info['Type'], default, not_null
-        )
-        return {
-            'add_sql': add_sql,
-            'drop_sql': drop_sql
-        }
-
     def _get_encoding(self, host):
         """
         return character set and collation for the table we're working on
         """
-        sql = """select
-                ccsa.character_set_name,
-                ccsa.collation_name
-            from
-                information_schema.tables t,
-                information_schema.collation_character_set_applicability ccsa
-            where
-                ccsa.collation_name = t.table_collation and
-                t.table_schema = '{0}' and
-                t.table_name = '{1}';
-            """
-        sql = sql.format(
+        res = host['connection'].get_encoding(
             self.config.get('host.' + host['alias'], 'database'),
             self.database['table']
         )
-        host['connection'].query(sql)
-        res = host['connection'].store_result()
         # we should only _ever_ be playing with one row, per host, at a time
         if res.num_rows() == 0:
             # this is an error case on the source database, will be dealt with later
@@ -301,10 +261,10 @@ class CloneRow(object):
         try:
             # again, we're not using cursors here because we want a nicely formatted dict
             con.query(select_sql)
-        except MySQLdb.ProgrammingError, mysqlex:
+        except con.get_exception_class('ProgrammingError'), sqlex:
             logging.error('Failed to execute query on %s', host['alias'])
             logging.error('  ' + select_sql)
-            self._error(exception=mysqlex)
+            self._error(exception=sqlex)
         res = con.store_result()
         # we should only _ever_ be playing with one row, per host, at a time
         if res.num_rows() == 0:
@@ -692,7 +652,7 @@ class CloneRow(object):
                     '  Column \'%s\' exists in the %s database but not in %s',
                     column, working_db, other_db
                 )
-                info = self._get_column_sql(con, column)
+                info = con.get_column_sql(self.database['table'], column)
                 logging.info(
                     '  To Add Column \'%s\' to %s, run the following SQL on %s:',
                     column, other_db, other_db

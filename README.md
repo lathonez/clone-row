@@ -112,6 +112,27 @@ This saves you having to find a column filter if you just want to work out the s
 - 6: There were changes but CloneRow.cfg has been configured such that they were ignored (e.g. table.my_table ignore_columns)
 
 ## Installation
+
+### Prerequisites
+
+* Python 2.7: Unfortunately we're dependent on python 2.7 due to our dependency on [MySQL-python](https://pypi.python.org/pypi/MySQL-python/1.2.5)
+* python-dev
+* python-pip
+* libmysqlclient-dev
+
+#### ubuntu
+
+`sudo apt-get install python-pip python-dev libmysqlclient-dev`
+
+#### arch
+
+`TODO`
+
+#### mac
+
+`TODO`
+
+
 ```
 git clone https://github.com/lathonez/mysql-clone-row.git
 sudo pip install -r mysql-clone-row/requirements.txt
@@ -119,86 +140,9 @@ sudo pip install -r mysql-clone-row/requirements.txt
 export PATH=$PATH:/path/to/mysql-clone-row
 ```
 
-### Creating a tunnel to mysql
-Sometimes you may not have direct access to the mysql database (e.g. the port is not exposed). To get around this you can use an ssh tunnel, if you have ssh access to the box:
+## Acknowledgements
 
-`ssh -L 33306:localhost:3306 my.mysql.server`
+This project relies heavily on these libs:
 
-You can now access the server on my.mysql.server on localhost port 33306.
-
-### Installation Errors
-Common issues and remedies during installation
-####mysql-python install failing
-
-```
-sudo pip install -r mysql-clone-row/requirements.txt
-...
-Traceback (most recent call last):
-
-  File "<string>", line 17, in <module>
-
-  File "/tmp/pip_build_shazleto/MySQL-python/setup.py", line 17, in <module>
-
-    metadata, options = get_config()
-
-  File "setup_posix.py", line 43, in get_config
-
-    libs = mysql_config("libs_r")
-
-  File "setup_posix.py", line 25, in mysql_config
-
-    raise EnvironmentError("%s not found" % (mysql_config.path,))
-
-EnvironmentError: mysql_config not found
-
-----------------------------------------
-Cleaning up...
-Command python setup.py egg_info failed with error code 1 in /tmp/pip_build_shazleto/MySQL-python
-```
-
-If you see the above error, try installing libmysqlclient:
-
-`sudo apt-get install libmysqlclient-dev`
-
-####mysql-python install failing again
-```
-sudo pip install -r mysql-clone-row/requirements.txt
-...
-x86_64-linux-gnu-gcc -pthread -fno-strict-aliasing -DNDEBUG -g -fwrapv -O2 -Wall -Wstrict-prototypes -fPIC -Dversion_info=(1,2,5,'final',1) -D__version__=1.2.5 -I/usr/include/mysql -I/usr/include/python2.7 -c _mysql.c -o build/temp.linux-x86_64-2.7/_mysql.o -DBIG_JOINS=1 -fno-strict-aliasing -g -DNDEBUG
-
-_mysql.c:29:20: fatal error: Python.h: No such file or directory
-
- #include "Python.h"
-
-                    ^
-
-compilation terminated.
-
-error: command 'x86_64-linux-gnu-gcc' failed with exit status 1
-```
-
-If you see the above error, try installing libmysqlclient:
-
-`sudo apt-get install python-dev`
-
-####bad interpreter
-
-```
-$ ./CloneRow.py
--bash: ./CloneRow.py: /usr/local/bin/python: bad interpreter: No such file or directory
-```
-
-If you see the above error, your python interpreter is probably not located in the usual location (/usr/local/bin/python). You can either symlink in the correct location:
-
-```
-$ which python
-/usr/bin/python
-$ cd /usr/local/bin/
-$ sudo ln -s /usr/bin/python
-```
-
-or just run the script as `python CloneRow.py`
-
-##Credits
 * [mysql-python](http://mysql-python.sourceforge.net/MySQLdb.html)
 * [DictDiffer](https://github.com/hughdbrown/dictdiffer)
