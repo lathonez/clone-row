@@ -1,9 +1,22 @@
-#! /usr/local/bin/python
+#! /usr/bin/python
 """ Python module for cloning a MYSQL row from one host to another """
 
-import argparse, coloredlogs, ConfigParser, datetime
-import logging, MySQLdb, os, paramiko, stat, sys, time, traceback
+# standard imports
 from subprocess import Popen
+import ConfigParser
+import datetime
+import logging
+import os
+import stat
+import sys
+import time
+import traceback
+
+# external imports
+import argparse
+import coloredlogs
+import MySQLdb
+import paramiko
 from DictDiffer import DictDiffer
 
 class CloneRow(object):
@@ -26,7 +39,7 @@ class CloneRow(object):
             'alias': None,
             'connection': None,
             'db_name': None,
-            'row': None
+            'row': {}
         }
         self.target = {
             'alias': None,
@@ -34,14 +47,14 @@ class CloneRow(object):
             'connection': None,
             'db_name': None,
             'new_insert': False,
-            'row': None
+            'row': {}
         }
         self.database = {
             'table': None,
             'column': None,
             'filter': None,
             'ignore_columns': [],
-            'deltas': None
+            'deltas': {}
         }
 
     #
@@ -151,7 +164,7 @@ class CloneRow(object):
         """
         logging.info('dumping update sql to disk..')
         # naughty naughty, accessing a protected member.. show me a better way
-        sql = cursor._last_executed
+        sql = cursor._last_executed # pylint: disable=locally-disabled,protected-access
         sql_file = self.config.get('clone_row', 'unload_filepath') + '.sql'
         with open(sql_file, "w") as outfile:
             outfile.write(sql)
@@ -434,7 +447,7 @@ class CloneRow(object):
             config.parse(open(ssh_config_path))
             ssh_config = config.lookup(host)
         else:
-            ssh_config = []
+            ssh_config = {}
 
         connect_options = {'hostname': host}
 
