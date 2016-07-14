@@ -2,7 +2,6 @@
 """ Python module for cloning a row from one database to another """
 
 # standard imports
-from subprocess import Popen
 import ConfigParser
 import datetime
 import logging
@@ -112,53 +111,17 @@ class CloneRow(object):
         the encoding should match for source and target tables
         if it doesn't, error out and warn the user
         """
+        database = self.config.get('host.' + self.source['alias'], 'database')
         logging.info('checking encoding..')
-        source_enc = self._get_encoding(self.source)
-        target_enc = self._get_encoding(self.target)
-        logging.info(
-            'source encoding %s:%s',
-            source_enc['character_set_name'],
-            source_enc['collation_name']
-        )
-        logging.info(
-            'target encoding %s:%s',
-            target_enc['character_set_name'],
-            target_enc['collation_name']
-        )
+        source_enc = self.source['connection'].get_encoding(database, self.database['table'])
+        target_enc = self.target['connection'].get_encoding(database, self.database['table'])
+        logging.info('source encoding %s', source_enc)
+        logging.info('target encoding %s', target_enc)
 
-        if set(source_enc.values()) - set(target_enc.values()):
-            logging.error('FATAL - encoding mismatch')
-            logging.info(self._get_log_break('|encoding changes|'))
-            logging.info(
-                'To change encoding on %s to %s:%s run the following sql on %s',
-                self.source['alias'],
-                source_enc['character_set_name'],
-                source_enc['collation_name'],
-                self.source['alias']
-            )
-            logging.warning(
-                '  alter table %s convert to character set %s collate %s;',
-                self.database['table'],
-                target_enc['character_set_name'],
-                target_enc['collation_name']
-            )
-            logging.info(
-                'To change encoding on %s to %s:%s run the following sql on %s',
-                self.target['alias'],
-                target_enc['character_set_name'],
-                target_enc['collation_name'],
-                self.target['alias']
-            )
-            logging.warning(
-                '  alter table %s convert to character set %s collate %s;',
-                self.database['table'],
-                target_enc['character_set_name'],
-                target_enc['collation_name']
-            )
-            logging.info(self._get_log_break())
-            self._error('Fix the encoding mismatch and re-run')
+        if source_enc != target_enc:
+            self._error('FATAL - encoding mismatch')
 
-    def _dump_update_sql(self, cursor):
+    def _dump_update_sql(self, sql):
         """
         dump the last executed update statement to a file
 
@@ -166,8 +129,6 @@ class CloneRow(object):
         cursor -- MySQLdb.cursor object of the connection we're dumping
         """
         logging.info('dumping update sql to disk..')
-        # naughty naughty, accessing a protected member.. show me a better way
-        sql = cursor._last_executed # pylint: disable=locally-disabled,protected-access
         sql_file = self.config.get('clone_row', 'unload_filepath') + '.sql'
         with open(sql_file, "w") as outfile:
             outfile.write(sql)
@@ -197,23 +158,6 @@ class CloneRow(object):
             traceback.print_exc()
         sys.exit(1)
 
-    def _get_encoding(self, host):
-        """
-        return character set and collation for the table we're working on
-        """
-        res = host['connection'].get_encoding(
-            self.config.get('host.' + host['alias'], 'database'),
-            self.database['table']
-        )
-        # we should only _ever_ be playing with one row, per host, at a time
-        if res.num_rows() == 0:
-            # this is an error case on the source database, will be dealt with later
-            self._error('_check_encoding: failed to find encoding for ' + host['alias'])
-        if res.num_rows() != 1:
-            self._error('_check_encoding: Only one row expected')
-        row = res.fetch_row(how=1)
-        return dict(row[0])
-
     @classmethod
     def _get_log_break(cls, string=''):
         """
@@ -241,7 +185,7 @@ class CloneRow(object):
 
     def _get_row(self, host):
         """
-        Run a select query (MYSQLdb.Connection.query) returning a dict including column headers.
+        Run a select query returning a dict including column headers.
         Should always return a single row.
 
         Keyword arguments:
@@ -249,6 +193,7 @@ class CloneRow(object):
         """
         logging.info('getting %s row..', host['alias'])
         con = host['connection']
+
         if self.config.getboolean('clone_row', 'schema_only'):
             # if we're only doing schema diffs we don't care about columns or filters
             # we can just select the first row from the table
@@ -257,24 +202,18 @@ class CloneRow(object):
             select_sql = 'select * from {0} where {1} = {2}'.format(
                 self.database['table'],
                 self.database['column'],
-                self._quote_sql_param(con.escape_string(self.database['filter']))
+                self._quote_sql_param(self.database['filter'])
             )
-        try:
-            # again, we're not using cursors here because we want a nicely formatted dict
-            con.query(select_sql)
-        except con.get_exception_class('ProgrammingError'), sqlex:
-            logging.error('Failed to execute query on %s', host['alias'])
-            logging.error('  ' + select_sql)
-            self._error(exception=sqlex)
-        res = con.store_result()
+
+        res = con.dict_query(select_sql)
+
         # we should only _ever_ be playing with one row, per host, at a time
-        if res.num_rows() == 0:
+        if len(res) == 0:
             # this is an error case on the source database, will be dealt with later
             return None
-        if res.num_rows() != 1:
+        if len(res) != 1:
             self._error('get_row: Only one row expected -- cannot clone on multiple rows!')
-        row = res.fetch_row(how=1)
-        return dict(row[0])
+        return res[0]
 
     def _get_table_config(self, table):
         """
@@ -344,7 +283,6 @@ class CloneRow(object):
     def _quote_sql_param(cls, sql_param):
         """
         encapsulate an sql paramter in quotes if necessary
-        param should be escaped (Connection.escape_string) before it's passed in
 
         Keyword arguments:
         sql_param -- the sql paramter to operate on
@@ -434,39 +372,30 @@ class CloneRow(object):
         """ unload the row we're working on from the target database for backup purposes """
         logging.info('backing up target row..')
         unload_file = self.config.get('clone_row', 'unload_filepath') + '.backup'
-        error_log = '/tmp/mysqldump.error'
+        error_log = '/tmp/clone_row_dump.error'
         target_alias = self.target['alias']
         password = self.config.get('host.' + target_alias, 'password')
 
-        args = [
-            'mysqldump',
-            '--host',
-            self.config.get('host.' + target_alias, 'hostname'),
-            '--user',
-            self.config.get('host.' + target_alias, 'username'),
-            '--port',
-            self.config.get('host.' + target_alias, 'port'),
-            '--no-create-info',
-            '--databases',
-            self.target['db_name'],
-            '--tables',
-            self.database['table'],
-            '--where',
-            '{0} = \'{1}\''.format(self.database['column'], self.database['filter'])
-        ]
+        args = {
+            'host': self.config.get('host.' + target_alias, 'hostname'),
+            'user': self.config.get('host.' + target_alias, 'username'),
+            'port': self.config.get('host.' + target_alias, 'port'),
+            'database': self.target['db_name'],
+            'table': self.database['table'],
+            'column': self.database['column'],
+            'filter': self.database['filter'],
+            'unload_file': unload_file,
+            'error_log': error_log
+        }
 
         if password is not None and password != '':
-            args.append('-p' + password)
+            args['password'] = password
 
-        # do the mysql dump and pipe it through James Mishra's mysqldump_to_csv
-        # so we can use it to insert later if restoring from backup
-        with open(unload_file, 'wb', 0) as outfile, open(error_log, 'wb', 0) as errfile:
-            mysqldump_process = Popen(args, stdout=outfile, stderr=errfile)
-        ret = mysqldump_process.wait()
+        ret = self.target['connection'].dump(args)
 
         if ret > 0:
-            logging.error('an issue occurred running mysqldump, see ' + errfile)
-            self._error('mysqldump exited with non zero error code of ' + str(ret))
+            logging.error('an issue occurred running dump, see ' + error_log)
+            self._error('dump exited with non zero error code of ' + str(ret))
 
         # do some basic sanity checking - we should only have one INSERT line
         num_lines = sum(1 for line in open(unload_file) if line.find('INSERT') == 0)
@@ -701,7 +630,7 @@ class CloneRow(object):
         # run the update
         cur.execute(update_sql, tuple(update_params))
         # dump the actual update sql out to disk so we can look at it later if necessary
-        self._dump_update_sql(cur)
+        self._dump_update_sql(self.target['connection'].get_last_executed(cur))
         if self.target['connection'].affected_rows() != 1:
             self.target['connection'].rollback()
             cur.close()

@@ -1,8 +1,13 @@
 #! /usr/bin/python
 """ Connection wrapper for MySQLdb and PSQLdb """
 
+# internal imports
+from subprocess import Popen
+
 # external imports
 import MySQLdb
+import psycopg2        # pylint: disable=locally-disabled,import-error
+import psycopg2.extras # pylint: disable=locally-disabled,import-error
 
 class PDBC(object):
     """ PDBC constructor """
@@ -15,12 +20,37 @@ class PDBC(object):
         self.con = None
         self.driver = PDBC._get_driver(driver)
 
+    def _is_postgres(self):
+        """
+        return true if this instance is running against postgres
+        """
+        return self.driver == PDBC._get_driver('psql')
+
     @classmethod
     def _get_driver(cls, driver):
         return {
             'mysql': MySQLdb,
-            'psql': None,
+            'psql': psycopg2,
         }.get(driver)
+
+    @classmethod
+    def _map_connect_args(cls, args):
+        """
+        map connect args from mysql to psql
+        db -> database
+        passwd -> password
+        """
+        ret = {
+            'user': args['user'],
+            'host': args['host'],
+            'port': args['port'],
+            'database': args['db']
+        }
+
+        if 'passwd' in args:
+            ret['password'] = args['passwd']
+
+        return ret
 
     #
     # PUBLIC methods
@@ -34,17 +64,22 @@ class PDBC(object):
 
     def autocommit(self, autocommit):
         """
-        straight passthrough
+        set autocommit on or off depending on passed in autocommit boolean
         """
-        self.con.autocommit(autocommit)
+        if self._is_postgres():
+            self.con.set_session(autocommit=autocommit)
+        else:
+            self.con.autocommit(autocommit)
 
     def connect(self, args):
         """
         connect to the database
             args: host, user, port, db, password
         """
+        if self._is_postgres():
+            args = PDBC._map_connect_args(args)
+
         self.con = self.driver.connect(**args)
-        return self.con.get_server_info()
 
     def close(self):
         """
@@ -64,11 +99,65 @@ class PDBC(object):
         """
         return self.con.cursor()
 
-    def escape_string(self, string):
+    def dump(self, args):
         """
-        straight passthrough
+            get the appropriate command line args for dumping to disk
+            args is a dict containing connection vars, host, user, pass etc
         """
-        return self.con.escape_string(string)
+        if self._is_postgres():
+            # pg_dump can't doesn't have a where filter
+            # psql doesn't do (global) temporary tables
+            # this seems like the best solution
+            cur = self.cursor()
+            select_sql = 'select * from {0} where {1} = %s'.format(
+                args['table'], args['column']
+            )
+            select_sql = cur.mogrify(select_sql, (args['filter'], ))
+            copy_sql = 'copy ({0}) to STDOUT'.format(select_sql)
+            outfile = open(args['unload_file'], 'wb', 0)
+            cur.copy_expert(copy_sql, outfile)
+
+        else:
+            dump_args = [
+                'mysqldump', '--host', args['host'], '--user', args['user'],
+                '--port', args['port'], '--no-create-info', '--databases', args['database'],
+                '--tables', args['table'], '--where',
+                '{0} = \'{1}\''.format(args['column'], args['filter'])
+            ]
+            if 'password' in args:
+                dump_args.append('-p' + args['password'])
+
+            with open(args['unload_file'], 'wb', 0) as outfile, \
+                open(args['error_log'], 'wb', 0) as errfile:
+                dump_process = Popen(dump_args, stdout=outfile, stderr=errfile)
+            ret = dump_process.wait()
+
+            return ret
+
+    def dict_query(self, sql):
+        """
+        function to return a dict array [{column: value}] from an sql query
+        """
+        if self._is_postgres():
+            cur = self.con.cursor(cursor_factory=psycopg2.extras.DictCursor)
+            cur.execute(sql)
+            if cur.rowcount == 0:
+                return []
+            if cur.rowcount > 1:
+                return ['foo', 'bar']
+            row = cur.fetchone()
+            cur.close()
+            return [row]
+        else:
+            self.con.query(sql)
+            res = self.con.store_result()
+            if res.num_rows() == 0:
+                return []
+            if res.num_rows() > 1:
+                return ['foo', 'bar']
+            row = res.fetch_row(how=1)
+
+            return [dict(row[0])]
 
     def get_column_sql(self, table, column):
         """
@@ -98,6 +187,9 @@ class PDBC(object):
         """
         return character set and collation for the table we're working on
         """
+        if self._is_postgres():
+            # seems postgres does database level encoding
+            return self.con.get_parameter_status('server_encoding')
         sql = """select
                 ccsa.character_set_name,
                 ccsa.collation_name
@@ -111,7 +203,9 @@ class PDBC(object):
             """
         sql = sql.format(database, table)
         self.query(sql)
-        return self.store_result()
+        res = self.store_result()
+        row = dict(res.fetch_row(how=1)[0])
+        return '{0}:{1}'.format(row['character_set_name'], row['collation_name'])
 
     def get_exception_class(self, exception_class):
         """
@@ -122,11 +216,24 @@ class PDBC(object):
             'ProgrammingError': self.driver.ProgrammingError,
         }.get(exception_class)
 
+    def get_last_executed(self, cursor):
+        """
+        returns statement last executed by given cursor
+        """
+        if self._is_postgres():
+            print 'something else for postgres'
+
+        # naughty naughty, accessing a protected member.. show me a better way
+        return cursor._last_executed # pylint: disable=locally-disabled,protected-access
+
     def get_server_info(self):
         """
         straight passthrough
         """
-        return self.con.get_server_info()
+        if self._is_postgres():
+            return self.con.server_version
+        else:
+            return self.con.get_server_info()
 
     def query(self, sql):
         """
