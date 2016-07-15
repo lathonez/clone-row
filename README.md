@@ -137,6 +137,7 @@ This saves you having to find a column filter if you just want to work out the s
 
 `TODO`
 
+### Setup clone-row
 
 ```
 git clone https://github.com/lathonez/clone-row.git
