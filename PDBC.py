@@ -63,6 +63,8 @@ class PDBC(object):
         if self._is_postgres():
             if isinstance(param, list) or isinstance(param, dict):
                 return psycopg2.extras.Json(param)
+            else:
+                return param
         else:
             return param
 
@@ -184,7 +186,7 @@ class PDBC(object):
         drop_sql = 'alter table `{0}` drop column `{1}`;'.format(table, column)
         # using con.query instead of con.cursor.execute gives us a nicer return format
         self.query('show fields from {0} where field = \'{1}\''.format(table, column))
-        res = self.store_result()
+        res = self.con.store_result()
         # using how=1 and parsing into a dict lets us manipulate with the returned data easily
         column_info = dict(res.fetch_row(how=1)[0])
         not_null = '' if column_info['Null'] == 'YES' else ' not null'
@@ -196,6 +198,19 @@ class PDBC(object):
             'add_sql': add_sql,
             'drop_sql': drop_sql
         }
+
+    def get_connection_string(self, args):
+        """
+        prompt the user how to get a connection to the database, used for manual rollback
+        """
+        if self._is_postgres():
+            return 'psql --host {0} --port {1} --user {2} --pass {3}'.format(
+                args['host'], args['port'], args['user'], args['database']
+            )
+        else:
+            return 'mysql -h {0} -P {1} -u {2} -p {3}'.format(
+                args['host'], args['port'], args['user'], args['database']
+            )
 
     def get_encoding(self, database, table):
         """
@@ -217,7 +232,7 @@ class PDBC(object):
             """
         sql = sql.format(database, table)
         self.query(sql)
-        res = self.store_result()
+        res = self.con.store_result()
         row = dict(res.fetch_row(how=1)[0])
         return '{0}:{1}'.format(row['character_set_name'], row['collation_name'])
 
@@ -240,6 +255,15 @@ class PDBC(object):
             # no public access in mysql
             return cursor._last_executed # pylint: disable=locally-disabled,protected-access
 
+    def get_load_sql(self, dump_file, table):
+        """
+        sql that can be run by the user to load the dump_file manually
+        """
+        if self._is_postgres():
+            return 'copy {0} from \'{1}\';'.format(table, dump_file)
+        else:
+            return 'source ' + dump_file
+
     def get_server_info(self):
         """
         straight passthrough
@@ -255,17 +279,34 @@ class PDBC(object):
         """
         return self.con.query(sql)
 
+    def load(self, dump_file, table):
+        """
+        load a dump file into the given database + table
+        """
+        handle = open(dump_file)
+        cur = self.cursor()
+
+        if self._is_postgres():
+            cur.copy_from(handle, table)
+        else:
+            for line in handle:
+                # only run the insert:
+                #   - ignore locks (only one row)
+                #   - ignore encoding (handled herein separately)
+                if line.find('INSERT') == 0:
+                    cur.execute(line)
+
+        ret = self.affected_rows(cur)
+        cur.close()
+        handle.close()
+
+        return ret
+
     def rollback(self):
         """
         straight passthrough
         """
         return self.con.rollback()
-
-    def store_result(self):
-        """
-        straight passthrough
-        """
-        return self.con.store_result()
 
     def validate_dump(self, dump_file):
         """

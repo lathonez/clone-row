@@ -312,16 +312,11 @@ class CloneRow(object):
             cur.close()
             self.target['connection'].commit()
             return
-        for line in open(self.target['backup']):
-            # only run the insert:
-            #   - ignore locks (only one row)
-            #   - ignore encoding (handled herein separately)
-            if line.find('INSERT') == 0:
-                cur.execute(line)
-        if self.target['connection'].affected_rows(cur) != 1:
+        ret = self.target['connection'].load(self.target['backup'], self.database['table'])
+        if ret != 1:
             cur.close()
             self.target['connection'].rollback()
-            self._error('restore_target: expected to load only one row')
+            self._error('restore_target: expected to load exactly one row')
         cur.close()
         self.target['connection'].commit()
 
@@ -532,12 +527,12 @@ class CloneRow(object):
         """ provide sql steps to rollback by hand after script has run """
         target_alias = self.target['alias']
         restore_sql = [
-            '  mysql -h {0} -P {1} -u {2} -p {3}'.format(
-                self.config.get('host.' + target_alias, 'hostname'),
-                self.config.get('host.' + target_alias, 'port'),
-                self.config.get('host.' + target_alias, 'username'),
-                self.target['db_name']
-            )
+            '    ' + self.target['connection'].get_connection_string({
+                'host': self.config.get('host.' + target_alias, 'hostname'),
+                'port': self.config.get('host.' + target_alias, 'port'),
+                'user': self.config.get('host.' + target_alias, 'username'),
+                'database': self.target['db_name']
+            })
         ]
         restore_sql.append('    begin;')
         restore_sql.append('    delete from {0} where {1} = {2};'.format(
@@ -547,7 +542,9 @@ class CloneRow(object):
         ))
         restore_sql.append('    -- if more than one row has been deleted above run `rollback;`')
         if not self.target['new_insert']:
-            restore_sql.append('    source ' + self.target['backup'])
+            restore_sql.append('    ' + self.target['connection'].get_load_sql(
+                self.target['backup'], self.database['table']
+            ))
         restore_sql.append('    commit;')
         logging.info('')
         logging.info(self._get_log_break('|Manual Rollback Steps|'))
