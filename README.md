@@ -1,5 +1,5 @@
-# mysql-clone-row
-Clone a row from one mysql database to another
+# clone-row
+Clone a row from one database to another, supporting mysql and postgres
 
 ## Features
 * Ignore schema differences, common columns will be cloned regardless of definitions that are missing from target or source databases
@@ -12,7 +12,7 @@ Clone a row from one mysql database to another
 * Setup database aliases for ease of use (e.g. local, dev, test, integration, prod)
 
 ## There are existing tools for this!
-There are many industry standard tools that could (and should) be used instead of mysql-clone-row, if applicable. Examples include [mysqldump](https://dev.mysql.com/doc/refman/5.1/en/mysqldump.html), [replication](https://dev.mysql.com/doc/refman/5.0/en/replication.html) and simply [select into outfile](https://dev.mysql.com/doc/refman/5.1/en/select-into.html).
+There are many industry standard tools that could (and should) be used instead of clone-row, if applicable. Examples include [mysqldump](https://dev.mysql.com/doc/refman/5.1/en/mysqldump.html), [replication](https://dev.mysql.com/doc/refman/5.0/en/replication.html) and simply [select into outfile](https://dev.mysql.com/doc/refman/5.1/en/select-into.html).
 However, I have found that there are several use-cases for this application:
 * Many databases containing rich data which is modified little and often
 * Wide tables with multiple changes that are hard to keep track of during the release cycle
@@ -21,7 +21,7 @@ However, I have found that there are several use-cases for this application:
 * No CMS for making simple changes to data rows across multiple databases
 
 ## Configuration
-* An example configration file [CloneRow.example.cfg](https://github.com/lathonez/mysql-clone-row/blob/master/CloneRow.example.cfg) is provided
+* An example configration file [CloneRow.example.cfg](https://github.com/lathonez/clone-row/blob/master/CloneRow.example.cfg) is provided
 * This needs to be copied to `CloneRow.cfg` in the same directory and configured for your system
 * The main sections of the config file are host aliases. These allow you to configre multiple databases hosts and refer to them easily from the command line.
 ```
@@ -31,9 +31,11 @@ password: example_one_pass
 hostname: one.example.com
 port: 3306
 database: example_one_db
+# valid options for driver are mysql and psql
+driver: mysql
 ```
-* `CloneRow.cfg` needs to have 0600 permissions as it is likely to contain mysql passwords. If you do not set the correct permissions the script will not run.
-* Use 127.0.0.1 instead of localhost. If you speciy localhost, mysql will use unix sockets and ignore the port argument you have configured
+* `CloneRow.cfg` needs to have 0600 permissions as it is likely to contain database passwords. If you do not set the correct permissions the script will not run.
+* Use 127.0.0.1 instead of localhost. If you speciy localhost, the driver will use unix sockets and ignore the port argument you have configured
 * If you don't need to use a password to access your database, leave the value as empty, e.g. `password:` (see example linked above)
 
 ## Usage
@@ -70,6 +72,7 @@ password: example_one_pass
 hostname: one.example.com
 port: 3306
 database: example_one_db
+driver: psql
 
 [host.example_two]
 username: example_two_user
@@ -77,6 +80,7 @@ password: example_two_pass
 hostname: two.example.com
 port: 3306
 database: example_two_db
+driver: psql
 
 [table.my_table]
 ignore_columns: id,lastUpdated
@@ -118,11 +122,12 @@ This saves you having to find a column filter if you just want to work out the s
 * Python 2.7: Unfortunately we're dependent on python 2.7 due to our dependency on [MySQL-python](https://pypi.python.org/pypi/MySQL-python/1.2.5)
 * python-dev
 * python-pip
+* python-psycopg2
 * libmysqlclient-dev
 
 #### ubuntu
 
-`sudo apt-get install python-pip python-dev libmysqlclient-dev`
+`sudo apt-get install python-pip python-dev python-psycopg2 libmysqlclient-dev`
 
 #### arch
 
@@ -134,10 +139,10 @@ This saves you having to find a column filter if you just want to work out the s
 
 
 ```
-git clone https://github.com/lathonez/mysql-clone-row.git
-sudo pip install -r mysql-clone-row/requirements.txt
+git clone https://github.com/lathonez/clone-row.git
+sudo pip install -r clone-row/requirements.txt
 # add the following to .bashrc
-export PATH=$PATH:/path/to/mysql-clone-row
+export PATH=$PATH:/path/to/clone-row
 ```
 
 ## Acknowledgements
@@ -145,4 +150,5 @@ export PATH=$PATH:/path/to/mysql-clone-row
 This project relies heavily on these libs:
 
 * [mysql-python](http://mysql-python.sourceforge.net/MySQLdb.html)
+* [psycopg](http://initd.org/psycopg/)
 * [DictDiffer](https://github.com/hughdbrown/dictdiffer)
