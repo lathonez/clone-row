@@ -129,7 +129,7 @@ class CloneRow(object):
         cursor -- MySQLdb.cursor object of the connection we're dumping
         """
         logging.info('dumping update sql to disk..')
-        sql_file = self.config.get('clone_row', 'unload_filepath') + '.sql'
+        sql_file = self.config.get('clone_row', 'dump_filepath') + '.sql'
         with open(sql_file, "w") as outfile:
             outfile.write(sql)
         logging.warning('update sql is available for inspection at %s on this machine', sql_file)
@@ -239,20 +239,20 @@ class CloneRow(object):
             logging.warning('_get_table_config: no ignore_columns for %s', table)
             return
 
-    def _get_unload_filepath(self):
+    def _get_dump_filepath(self):
         """
         return the unload filepath for us to use for backups and sql dumps
         in the format of /dir/table-column-filter-millis
         we're after something unique for this run hence millis
         """
-        unload_file = self.config.get('clone_row', 'unload_dir')
-        unload_file += '/{0}-{1}-{2}-{3}'.format(
+        dump_file = self.config.get('clone_row', 'unload_dir')
+        dump_file += '/{0}-{1}-{2}-{3}'.format(
             self.database['table'],
             self.database['column'],
             self.database['filter'],
             int(round(time.time() * 1000))
         )
-        return unload_file
+        return dump_file
 
     def _housekeep(self):
         """ close any existing connections """
@@ -301,7 +301,7 @@ class CloneRow(object):
             self.database['table'], self.database['column']
         )
         cur.execute(delete_sql, (self.database['filter'], ))
-        if self.target['connection'].affected_rows() != 1:
+        if self.target['connection'].affected_rows(cur) != 1:
             cur.close()
             self.target['connection'].rollback()
             self._error('restore_target: expected to delete only one row')
@@ -318,7 +318,7 @@ class CloneRow(object):
             #   - ignore encoding (handled herein separately)
             if line.find('INSERT') == 0:
                 cur.execute(line)
-        if self.target['connection'].affected_rows() != 1:
+        if self.target['connection'].affected_rows(cur) != 1:
             cur.close()
             self.target['connection'].rollback()
             self._error('restore_target: expected to load only one row')
@@ -371,7 +371,7 @@ class CloneRow(object):
     def _unload_target(self):
         """ unload the row we're working on from the target database for backup purposes """
         logging.info('backing up target row..')
-        unload_file = self.config.get('clone_row', 'unload_filepath') + '.backup'
+        dump_file = self.config.get('clone_row', 'dump_filepath') + '.backup'
         error_log = '/tmp/clone_row_dump.error'
         target_alias = self.target['alias']
         password = self.config.get('host.' + target_alias, 'password')
@@ -384,7 +384,7 @@ class CloneRow(object):
             'table': self.database['table'],
             'column': self.database['column'],
             'filter': self.database['filter'],
-            'unload_file': unload_file,
+            'dump_file': dump_file,
             'error_log': error_log
         }
 
@@ -397,12 +397,10 @@ class CloneRow(object):
             logging.error('an issue occurred running dump, see ' + error_log)
             self._error('dump exited with non zero error code of ' + str(ret))
 
-        # do some basic sanity checking - we should only have one INSERT line
-        num_lines = sum(1 for line in open(unload_file) if line.find('INSERT') == 0)
+        if not self.target['connection'].validate_dump(dump_file):
+            self._error('unload_target: unable to verify unload file ' + dump_file)
 
-        if num_lines != 1:
-            self._error('unload_target: unable to verify unload file ' + unload_file)
-        logging.warning('backup file can be found at %s on %s', unload_file, self.target['alias'])
+        logging.warning('backup file can be found at %s on this machine', dump_file)
 
         # upload the backup file to transactional log store if applicable
         if (self.config.has_section('transaction_log') and
@@ -410,9 +408,9 @@ class CloneRow(object):
             self._scp_file(
                 self.config.get('transaction_log', 'hostname'),
                 self.config.get('transaction_log', 'directory'),
-                unload_file
+                dump_file
             )
-        return unload_file
+        return dump_file
 
     #
     # PUBLIC methods
@@ -462,7 +460,7 @@ class CloneRow(object):
         # and any columns which have default values into the db, we will update them
         # as normal later on in the script
         cur.execute(insert_sql, (self.database['filter'],))
-        if self.target['connection'].affected_rows() != 1:
+        if self.target['connection'].affected_rows(cur) != 1:
             cur.close()
             self._error('somehow we\'ve inserted multiple rows')
         # now we have a row, we can return it as usual
@@ -526,7 +524,7 @@ class CloneRow(object):
         self._get_table_config(self.database['table'])
         self.config.add_section('clone_row')
         self.config.set('clone_row', 'unload_dir', args.unload_dir)
-        self.config.set('clone_row', 'unload_filepath', self._get_unload_filepath())
+        self.config.set('clone_row', 'dump_filepath', self._get_dump_filepath())
         self.config.set('clone_row', 'schema_only', str(args.schema_only))
         self.config.set('clone_row', 'feeling_lucky', str(args.feeling_lucky))
 
@@ -624,14 +622,14 @@ class CloneRow(object):
                 update_sql = 'update {0} set {1} = %s'.format(self.database['table'], column)
             else:
                 update_sql += ', {0} = %s'.format(column)
-            update_params.append(self.source['row'][column])
+            update_params.append(self.target['connection'].adapt_param(self.source['row'][column]))
         update_sql += ' where {0} = %s'.format(self.database['column'])
         update_params.append(self.database['filter'])
         # run the update
         cur.execute(update_sql, tuple(update_params))
         # dump the actual update sql out to disk so we can look at it later if necessary
         self._dump_update_sql(self.target['connection'].get_last_executed(cur))
-        if self.target['connection'].affected_rows() != 1:
+        if self.target['connection'].affected_rows(cur) != 1:
             self.target['connection'].rollback()
             cur.close()
             self._error('update_target: expected to update a single row')

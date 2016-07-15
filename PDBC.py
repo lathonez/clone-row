@@ -1,5 +1,5 @@
 #! /usr/bin/python
-""" Connection wrapper for MySQLdb and PSQLdb """
+""" Connection wrapper for MySQLdb and psycopg2 """
 
 # internal imports
 from subprocess import Popen
@@ -56,11 +56,24 @@ class PDBC(object):
     # PUBLIC methods
     #
 
-    def affected_rows(self):
+    def adapt_param(self, param):
         """
-        straight passthrough
+        parse parameter with relevant adapter based on type
         """
-        return self.con.affected_rows()
+        if self._is_postgres():
+            if isinstance(param, list) or isinstance(param, dict):
+                return psycopg2.extras.Json(param)
+        else:
+            return param
+
+    def affected_rows(self, cursor):
+        """
+        mysql doesn't use cursors in RL, so the connection holds that info
+        """
+        if self._is_postgres():
+            return cursor.rowcount
+        else:
+            return self.con.affected_rows()
 
     def autocommit(self, autocommit):
         """
@@ -114,9 +127,10 @@ class PDBC(object):
             )
             select_sql = cur.mogrify(select_sql, (args['filter'], ))
             copy_sql = 'copy ({0}) to STDOUT'.format(select_sql)
-            outfile = open(args['unload_file'], 'wb', 0)
+            outfile = open(args['dump_file'], 'wb', 0)
             cur.copy_expert(copy_sql, outfile)
-
+            cur.close()
+            outfile.close()
         else:
             dump_args = [
                 'mysqldump', '--host', args['host'], '--user', args['user'],
@@ -127,7 +141,7 @@ class PDBC(object):
             if 'password' in args:
                 dump_args.append('-p' + args['password'])
 
-            with open(args['unload_file'], 'wb', 0) as outfile, \
+            with open(args['dump_file'], 'wb', 0) as outfile, \
                 open(args['error_log'], 'wb', 0) as errfile:
                 dump_process = Popen(dump_args, stdout=outfile, stderr=errfile)
             ret = dump_process.wait()
@@ -221,10 +235,10 @@ class PDBC(object):
         returns statement last executed by given cursor
         """
         if self._is_postgres():
-            print 'something else for postgres'
-
-        # naughty naughty, accessing a protected member.. show me a better way
-        return cursor._last_executed # pylint: disable=locally-disabled,protected-access
+            return cursor.query
+        else:
+            # no public access in mysql
+            return cursor._last_executed # pylint: disable=locally-disabled,protected-access
 
     def get_server_info(self):
         """
@@ -252,3 +266,23 @@ class PDBC(object):
         straight passthrough
         """
         return self.con.store_result()
+
+    def validate_dump(self, dump_file):
+        """
+        validate a file dumped by dump, returning true or false
+        dump_file - string filename
+        """
+        handle = open(dump_file)
+        ret = False
+        if self._is_postgres():
+            num_lines = sum(1 for line in handle)
+            if num_lines == 1:
+                ret = True
+        else:
+            # do some basic sanity checking - we should only have one INSERT line
+            num_lines = sum(1 for line in handle if line.find('INSERT') == 0)
+            if num_lines == 1:
+                ret = True
+
+        handle.close()
+        return ret
