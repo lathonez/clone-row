@@ -616,9 +616,9 @@ class CloneRow(object):
         columns = [c for c in delta_columns if c not in self.database['ignore_columns']]
         for column in columns:
             if not update_sql:
-                update_sql = 'update {0} set {1} = %s'.format(self.database['table'], column)
+                update_sql = 'update {0} set "{1}" = %s'.format(self.database['table'], column)
             else:
-                update_sql += ', {0} = %s'.format(column)
+                update_sql += ', "{0}" = %s'.format(column)
             update_params.append(self.target['connection'].adapt_param(self.source['row'][column]))
         update_sql += ' where {0} = %s'.format(self.database['column'])
         update_params.append(self.database['filter'])
