@@ -446,15 +446,24 @@ class CloneRow(object):
         if self.target['row'] is not None:
             # we only need to do this if there's no target row
             return
-        logging.info('inserting a minimal row into target database..')
+
+        columns = self.target['connection'].get_mandatory_columns(self.database['table'])
+        columns.append(self.database['column'])
+        columns = set(columns)
+        values = []
+        placeholders = []
+        for column in columns:
+            values.append(self.target['connection'].adapt_param(self.source['row'][column]))
+            placeholders.append('%s')
+        logging.info('inserting a minimal row into target database.. ')
         cur = self.target['connection'].cursor()
-        insert_sql = 'insert into {0} ({1}) values (%s)'.format(
-            self.database['table'], self.database['column']
+        insert_sql = 'insert into {0} ({1}) values ({2})'.format(
+            self.database['table'], ', '.join(columns), ', '.join(placeholders)
         )
         # what we're doing here is just putting a single row containing the column
         # and any columns which have default values into the db, we will update them
         # as normal later on in the script
-        cur.execute(insert_sql, (self.database['filter'],))
+        cur.execute(insert_sql, tuple(values))
         if self.target['connection'].affected_rows(cur) != 1:
             cur.close()
             self._error('somehow we\'ve inserted multiple rows')

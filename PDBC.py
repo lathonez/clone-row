@@ -264,6 +264,32 @@ class PDBC(object):
         else:
             return 'source ' + dump_file
 
+    def get_mandatory_columns(self, table):
+        """
+        return a list of columns that are not nullable and have no defaults
+        """
+        if self._is_postgres():
+            sql = """
+            select
+                column_name,
+                is_nullable,
+                column_default
+            from
+                information_schema.columns
+            where
+                is_nullable = 'NO' and
+                column_default IS NULL and
+                table_name = '{0}'
+            """
+            sql = sql.format(table)
+            cur = self.con.cursor()
+            cur.execute(sql)
+            res = cur.fetchall()
+            cur.close()
+            return [row[0] for row in res]
+        else:
+            raise "not implemented"
+
     def get_server_info(self):
         """
         straight passthrough
