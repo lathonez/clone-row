@@ -124,7 +124,7 @@ class PDBC(object):
             # psql doesn't do (global) temporary tables
             # this seems like the best solution
             cur = self.cursor()
-            select_sql = 'select * from {0} where {1} = %s'.format(
+            select_sql = 'select * from "{0}" where "{1}" = %s'.format(
                 args['table'], args['column']
             )
             select_sql = cur.mogrify(select_sql, (args['filter'], ))

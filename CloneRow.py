@@ -197,9 +197,9 @@ class CloneRow(object):
         if self.config.getboolean('clone_row', 'schema_only'):
             # if we're only doing schema diffs we don't care about columns or filters
             # we can just select the first row from the table
-            select_sql = 'select * from {0} limit 1'.format(self.database['table'])
+            select_sql = 'select * from "{0}" limit 1'.format(self.database['table'])
         else:
-            select_sql = 'select * from {0} where {1} = {2}'.format(
+            select_sql = 'select * from "{0}" where "{1}" = {2}'.format(
                 self.database['table'],
                 self.database['column'],
                 self._quote_sql_param(self.database['filter'])
@@ -625,7 +625,7 @@ class CloneRow(object):
         columns = [c for c in delta_columns if c not in self.database['ignore_columns']]
         for column in columns:
             if not update_sql:
-                update_sql = 'update {0} set "{1}" = %s'.format(self.database['table'], column)
+                update_sql = 'update "{0}" set "{1}" = %s'.format(self.database['table'], column)
             else:
                 update_sql += ', "{0}" = %s'.format(column)
             update_params.append(self.target['connection'].adapt_param(self.source['row'][column]))
