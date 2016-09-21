@@ -457,7 +457,7 @@ class CloneRow(object):
             placeholders.append('%s')
         logging.info('inserting a minimal row into target database.. ')
         cur = self.target['connection'].cursor()
-        insert_sql = 'insert into {0} ({1}) values ({2})'.format(
+        insert_sql = 'insert into "{0}" ({1}) values ({2})'.format(
             self.database['table'], ', '.join(columns), ', '.join(placeholders)
         )
         # what we're doing here is just putting a single row containing the column
