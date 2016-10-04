@@ -434,7 +434,7 @@ class CloneRow(object):
         self.target['row'] = self._get_row(self.target)
         # we really need a source row..
         if self.source['row'] is None:
-            self._error('get_rows: no row found in {0} database'.format(self.source['alias']))
+            self._error('get_rows: no row found in {0} database - query details (table , column, filter) {1} {2} {3}'.format(self.source['alias'], self.database['table'], self.database['column'], self.database['filter']))
         # make sure the encoding is all good
         self._check_encoding()
 
