@@ -2,7 +2,7 @@
 """ Python module for cloning a row from one database to another """
 
 # standard imports
-import ConfigParser
+import configparser
 import datetime
 import logging
 import os
@@ -26,7 +26,7 @@ class CloneRow(object):
         self._check_config_chmod()
         coloredlogs.install(show_hostname=False, show_name=False, show_severity=False)
         logging.info('Reading configuration..')
-        self.config = ConfigParser.ConfigParser(allow_no_value=True)
+        self.config = configparser.ConfigParser(allow_no_value=True)
         try:
             self.config.readfp(open(os.path.dirname(os.path.realpath(__file__)) + '/CloneRow.cfg'))
         except IOError:
@@ -65,7 +65,7 @@ class CloneRow(object):
         """ make sure the file permissions of CloneRow.cfg are 0600 """
         cfg_path = os.path.dirname(os.path.realpath(__file__)) + '/CloneRow.cfg'
         chmod = oct(stat.S_IMODE(os.stat(cfg_path).st_mode))
-        if chmod != '0600':
+        if chmod != '0600' and chmod != '0o600':
             logging.error('CloneRow.cfg needs to be secure: `chmod 0600 CloneRow.cfg`')
             sys.exit(4)
 
@@ -130,7 +130,7 @@ class CloneRow(object):
         """
         logging.info('dumping update sql to disk..')
         sql_file = self.config.get('clone_row', 'dump_filepath') + '.sql'
-        with open(sql_file, "w") as outfile:
+        with open(sql_file, "wb") as outfile:
             outfile.write(sql)
         logging.warning('update sql is available for inspection at %s on this machine', sql_file)
         if (self.config.has_section('transaction_log') and
@@ -172,7 +172,8 @@ class CloneRow(object):
         sep = '-'
         end = '|'
         # how many seps do wwe need each side of the string?
-        n_seps = (length - len(string) - 2) / 2
+        n_seps = int((length - len(string) - 2) / 2)
+
         # generate the log header, this might be one sep shorter than we need
         # if the string length is not an even number
         log_header = end + (sep * n_seps) + string + (sep * n_seps)
@@ -227,7 +228,7 @@ class CloneRow(object):
             logging.warning('no table specific config defined for %s', table)
             return
         try:
-            # unfortunately ConfigParser doesn't support lists, this is as nice as anything
+            # unfortunately configparser doesn't support lists, this is as nice as anything
             self.database['ignore_columns'] = self.config.get(
                 table_section, 'ignore_columns'
             ).rsplit(',')
@@ -235,7 +236,7 @@ class CloneRow(object):
             for column in self.database['ignore_columns']:
                 ignore_string += column + ' '
             logging.warning(ignore_string)
-        except ConfigParser.NoOptionError:
+        except configparser.NoOptionError:
             logging.warning('_get_table_config: no ignore_columns for %s', table)
             return
 
@@ -512,8 +513,7 @@ class CloneRow(object):
         args = parser.parse_args()
         # we either need --schema_only or column AND filter passed in
         if not args.schema_only and (args.column is None or args.filter is None):
-            print '\n', \
-                'column & filter arguments must be supplied unless running with --schema_only/-s\n'
+            print('\ncolumn & filter arguments must be supplied unless running with --schema_only/-s\n')
             parser.print_help()
             sys.exit(2)
         self.source['alias'] = args.source_alias
@@ -651,7 +651,7 @@ class CloneRow(object):
             logging.warning('Not prompting to restore from backup as you\'re felling lucky today')
             return True
         logging.warning('Type \'r\' to (r)estore from backup, anything else to exit')
-        descision = raw_input()
+        descision = input()
         if descision == 'r':
             logging.warning('restoring from backup..')
             self._restore_target()
