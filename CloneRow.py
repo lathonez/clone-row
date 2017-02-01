@@ -651,7 +651,7 @@ class CloneRow(object):
             logging.warning('Not prompting to restore from backup as you\'re felling lucky today')
             return True
         logging.warning('Type \'r\' to (r)estore from backup, anything else to exit')
-        descision = raw_input()
+        descision = input()
         if descision == 'r':
             logging.warning('restoring from backup..')
             self._restore_target()
