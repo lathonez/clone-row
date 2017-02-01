@@ -65,7 +65,7 @@ class CloneRow(object):
         """ make sure the file permissions of CloneRow.cfg are 0600 """
         cfg_path = os.path.dirname(os.path.realpath(__file__)) + '/CloneRow.cfg'
         chmod = oct(stat.S_IMODE(os.stat(cfg_path).st_mode))
-        if chmod != '0600':
+        if chmod != '0600' and chmod != '0o600':
             logging.error('CloneRow.cfg needs to be secure: `chmod 0600 CloneRow.cfg`')
             sys.exit(4)
 
