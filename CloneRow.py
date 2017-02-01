@@ -130,7 +130,7 @@ class CloneRow(object):
         """
         logging.info('dumping update sql to disk..')
         sql_file = self.config.get('clone_row', 'dump_filepath') + '.sql'
-        with open(sql_file, "w") as outfile:
+        with open(sql_file, "wb") as outfile:
             outfile.write(sql)
         logging.warning('update sql is available for inspection at %s on this machine', sql_file)
         if (self.config.has_section('transaction_log') and
