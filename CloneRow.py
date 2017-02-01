@@ -172,7 +172,8 @@ class CloneRow(object):
         sep = '-'
         end = '|'
         # how many seps do wwe need each side of the string?
-        n_seps = (length - len(string) - 2) / 2
+        n_seps = int((length - len(string) - 2) / 2)
+
         # generate the log header, this might be one sep shorter than we need
         # if the string length is not an even number
         log_header = end + (sep * n_seps) + string + (sep * n_seps)
