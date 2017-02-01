@@ -512,8 +512,7 @@ class CloneRow(object):
         args = parser.parse_args()
         # we either need --schema_only or column AND filter passed in
         if not args.schema_only and (args.column is None or args.filter is None):
-            print '\n', \
-                'column & filter arguments must be supplied unless running with --schema_only/-s\n'
+            print('\ncolumn & filter arguments must be supplied unless running with --schema_only/-s\n')
             parser.print_help()
             sys.exit(2)
         self.source['alias'] = args.source_alias
