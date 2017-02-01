@@ -2,7 +2,7 @@
 """ Python module for cloning a row from one database to another """
 
 # standard imports
-import ConfigParser
+import configparser
 import datetime
 import logging
 import os
@@ -26,7 +26,7 @@ class CloneRow(object):
         self._check_config_chmod()
         coloredlogs.install(show_hostname=False, show_name=False, show_severity=False)
         logging.info('Reading configuration..')
-        self.config = ConfigParser.ConfigParser(allow_no_value=True)
+        self.config = configparser.ConfigParser(allow_no_value=True)
         try:
             self.config.readfp(open(os.path.dirname(os.path.realpath(__file__)) + '/CloneRow.cfg'))
         except IOError:
@@ -227,7 +227,7 @@ class CloneRow(object):
             logging.warning('no table specific config defined for %s', table)
             return
         try:
-            # unfortunately ConfigParser doesn't support lists, this is as nice as anything
+            # unfortunately configparser doesn't support lists, this is as nice as anything
             self.database['ignore_columns'] = self.config.get(
                 table_section, 'ignore_columns'
             ).rsplit(',')
@@ -235,7 +235,7 @@ class CloneRow(object):
             for column in self.database['ignore_columns']:
                 ignore_string += column + ' '
             logging.warning(ignore_string)
-        except ConfigParser.NoOptionError:
+        except configparser.NoOptionError:
             logging.warning('_get_table_config: no ignore_columns for %s', table)
             return
 
