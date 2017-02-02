@@ -127,7 +127,7 @@ class PDBC(object):
             select_sql = 'select * from "{0}" where "{1}" = %s'.format(
                 args['table'], args['column']
             )
-            select_sql = cur.mogrify(select_sql, (args['filter'], ))
+            select_sql = cur.mogrify(select_sql, (args['filter'], )).decode(encoding='UTF-8')
             copy_sql = 'copy ({0}) to STDOUT'.format(select_sql)
             outfile = open(args['dump_file'], 'wb', 0)
             cur.copy_expert(copy_sql, outfile)
