@@ -389,7 +389,7 @@ class CloneRow(object):
 
         ret = self.target['connection'].dump(args)
 
-        if ret > 0:
+        if ret is not None:
             logging.error('an issue occurred running dump, see ' + error_log)
             self._error('dump exited with non zero error code of ' + str(ret))
 
