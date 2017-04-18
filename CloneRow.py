@@ -1,4 +1,4 @@
-#! /usr/bin/python
+#! /usr/bin/python3
 """ Python module for cloning a row from one database to another """
 
 # standard imports
