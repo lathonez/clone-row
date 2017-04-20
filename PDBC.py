@@ -1,4 +1,3 @@
-#! /usr/bin/python
 """ Connection wrapper for MySQLdb and psycopg2 """
 
 # internal imports
@@ -339,15 +338,15 @@ class PDBC(object):
         validate a file dumped by dump, returning true or false
         dump_file - string filename
         """
-        handle = open(dump_file)
+        handle = open(dump_file, encoding='latin-1')
         ret = False
         if self._is_postgres():
-            num_lines = sum(1 for line.decode('utf-8') in handle)
+            num_lines = sum(1 for line in handle)
             if num_lines == 1:
                 ret = True
         else:
             # do some basic sanity checking - we should only have one INSERT line
-            num_lines = sum(1 for line.decode('utf-8') in handle if line.find('INSERT') == 0)
+            num_lines = sum(1 for line in handle if line.find('INSERT') == 0)
             if num_lines == 1:
                 ret = True
 
