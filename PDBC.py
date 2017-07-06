@@ -308,7 +308,7 @@ class PDBC(object):
         """
         load a dump file into the given database + table
         """
-        handle = open(dump_file)
+        handle = open(dump_file, encoding='latin-1')
         cur = self.cursor()
 
         if self._is_postgres():
