@@ -4,7 +4,7 @@
 from subprocess import Popen
 
 # external imports
-import MySQLdb
+# import MySQLdb
 import psycopg2        # pylint: disable=locally-disabled,import-error
 import psycopg2.extras # pylint: disable=locally-disabled,import-error
 
@@ -28,7 +28,7 @@ class PDBC(object):
     @classmethod
     def _get_driver(cls, driver):
         return {
-            'mysql': MySQLdb,
+            # 'mysql': MySQLdb,
             'psql': psycopg2,
         }.get(driver)
 

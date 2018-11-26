@@ -1,4 +1,4 @@
-#! /usr/bin/python3
+#! /usr/local/bin/python3
 """ Python module for cloning a row from one database to another """
 
 # standard imports
@@ -14,7 +14,7 @@ import traceback
 # external imports
 import argparse
 import coloredlogs
-import paramiko
+# import paramiko
 from DictDiffer import DictDiffer
 from PDBC import PDBC
 
