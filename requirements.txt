@@ -1,5 +1,5 @@
 mysqlclient==2.0.1
 coloredlogs==1.0.1
-paramiko==2.4.0
+paramiko==2.4.2
 psycopg2==2.8.5
 configparser==3.5.0
